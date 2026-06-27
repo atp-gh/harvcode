@@ -1,3 +1,4 @@
+mod args;
 mod clipboard;
 mod filter;
 mod formatter;
@@ -8,78 +9,13 @@ use std::env;
 use std::path::PathBuf;
 use std::process;
 
-/// Runtime configuration
-struct Config {
-    roots: Vec<PathBuf>,
-    pick: bool,
-}
+use args::Config;
 
-/// Version
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-
-fn print_help() {
-    println!(
-        r#"harvcode {version}
-
-Usage:
-  harvcode [options] [paths...]
-
-Options:
-  -h, --help       Show help
-  -V, --version    Show version
-      --pick       Interactive selection (sk / fzf)
-
-Examples:
-  harvcode
-  harvcode src
-  harvcode src/main.rs
-  harvcode src tests
-  harvcode --pick
-
-Description:
-  Collect files, format as Markdown code blocks, copy to clipboard."#,
-        version = VERSION
-    );
-}
-
-fn print_version() {
-    println!("harvcode {}", VERSION);
-}
-
-/// Parse CLI arguments
-fn parse_args(args: Vec<String>) -> Result<Config, ()> {
-    let mut pick = false;
-    let mut roots = Vec::new();
-
-    for arg in args {
-        match arg.as_str() {
-            "--pick" => pick = true,
-            "-h" | "--help" => {
-                print_help();
-                process::exit(0);
-            }
-            "-V" | "--version" => {
-                print_version();
-                process::exit(0);
-            }
-            _ if arg.starts_with('-') => {
-                eprintln!("Unknown option: {}", arg);
-                eprintln!("Use --help for usage.");
-                return Err(());
-            }
-            _ => roots.push(PathBuf::from(arg)),
-        }
-    }
-
-    // Default to current directory if no paths are provided
-    if roots.is_empty() {
-        roots.push(PathBuf::from("."));
-    }
-
-    Ok(Config { roots, pick })
-}
-
-/// Expand input paths
+/// Expand input roots into a flat list of files.
+///
+/// Rules:
+/// - If path is a file → include directly
+/// - If path is a directory → recursively collect files
 fn expand_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -94,10 +30,22 @@ fn expand_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     files
 }
 
+/// Resolve the final list of files to process.
+///
+/// Steps:
+/// 1. Expand directories into file list
+/// 2. If `--pick` is enabled:
+///    - Present list to fuzzy finder (sk / fzf)
+///    - Return only selected files
+///
+/// Returns:
+/// - `Some(Vec<PathBuf>)` on success
+/// - `None` if picker is requested but unavailable
 fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
     let all_files = expand_roots(&cfg.roots);
 
     if cfg.pick {
+        // Convert file paths into newline-separated input for picker
         let list = all_files
             .into_iter()
             .map(|p| p.display().to_string())
@@ -110,14 +58,25 @@ fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
     Some(all_files)
 }
 
+/// Application entry point.
+///
+/// Flow:
+/// 1. Parse CLI arguments → `Config`
+/// 2. Resolve target files
+/// 3. Filter and read file contents
+/// 4. Format as Markdown code blocks
+/// 5. Copy to clipboard (fallback: stdout)
 fn main() {
+    // Collect CLI args (skip program name)
     let args: Vec<String> = env::args().skip(1).collect();
 
-    let cfg = match parse_args(args) {
+    // Parse CLI arguments
+    let cfg = match args::parse_args(args) {
         Ok(c) => c,
         Err(_) => process::exit(1),
     };
 
+    // Resolve file list (may involve interactive picker)
     let files = match resolve_files(&cfg) {
         Some(f) => f,
         None => {
@@ -126,8 +85,10 @@ fn main() {
         }
     };
 
+    // Pre-allocate output buffer (1MB initial capacity)
     let mut output = String::with_capacity(1024 * 1024);
 
+    // Read, filter, and format files
     for path in files {
         if !filter::is_valid(&path) {
             continue;
@@ -138,7 +99,7 @@ fn main() {
         }
     }
 
-    // Try to copy to clipboard, fallback to stdout
+    // Attempt clipboard copy, fallback to stdout
     if clipboard::copy(&output) {
         eprintln!("Copied to clipboard");
     } else {
