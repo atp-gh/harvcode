@@ -6,6 +6,7 @@ mod walker;
 
 use std::env;
 use std::path::PathBuf;
+use std::process;
 
 /// Runtime configuration
 struct Config {
@@ -13,16 +14,59 @@ struct Config {
     pick: bool,
 }
 
+/// Version
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+fn print_help() {
+    println!(
+        r#"harvcode {version}
+
+Usage:
+  harvcode [options] [paths...]
+
+Options:
+  -h, --help       Show help
+  -V, --version    Show version
+      --pick       Interactive selection (sk / fzf)
+
+Examples:
+  harvcode
+  harvcode src
+  harvcode src/main.rs
+  harvcode src tests
+  harvcode --pick
+
+Description:
+  Collect files, format as Markdown code blocks, copy to clipboard."#,
+        version = VERSION
+    );
+}
+
+fn print_version() {
+    println!("harvcode {}", VERSION);
+}
+
 /// Parse CLI arguments
-/// --pick enables interactive file selection
-/// Remaining args are treated as input paths
-fn parse_args(args: Vec<String>) -> Config {
+fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     let mut pick = false;
     let mut roots = Vec::new();
 
     for arg in args {
         match arg.as_str() {
             "--pick" => pick = true,
+            "-h" | "--help" => {
+                print_help();
+                process::exit(0);
+            }
+            "-V" | "--version" => {
+                print_version();
+                process::exit(0);
+            }
+            _ if arg.starts_with('-') => {
+                eprintln!("Unknown option: {}", arg);
+                eprintln!("Use --help for usage.");
+                return Err(());
+            }
             _ => roots.push(PathBuf::from(arg)),
         }
     }
@@ -32,12 +76,10 @@ fn parse_args(args: Vec<String>) -> Config {
         roots.push(PathBuf::from("."));
     }
 
-    Config { roots, pick }
+    Ok(Config { roots, pick })
 }
 
-/// Expand input paths into a flat list of files
-/// - Files are added directly
-/// - Directories are recursively traversed
+/// Expand input paths
 fn expand_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -52,9 +94,6 @@ fn expand_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
     files
 }
 
-/// Resolve final file list
-/// - Expands directories
-/// - Optionally applies interactive picker
 fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
     let all_files = expand_roots(&cfg.roots);
 
@@ -73,13 +112,17 @@ fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
 
 fn main() {
     let args: Vec<String> = env::args().skip(1).collect();
-    let cfg = parse_args(args);
+
+    let cfg = match parse_args(args) {
+        Ok(c) => c,
+        Err(_) => process::exit(1),
+    };
 
     let files = match resolve_files(&cfg) {
         Some(f) => f,
         None => {
             eprintln!("No picker available (sk / fzf required)");
-            return;
+            process::exit(2);
         }
     };
 
