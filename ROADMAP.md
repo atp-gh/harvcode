@@ -23,14 +23,14 @@ Improve the command-line interface and make the tool easier to discover.
 
 ### Planned
 
-- [ ] Add `--help`
-- [ ] Add `--version`
-- [ ] Add short aliases:
+- [x] Add `--help`
+- [x] Add `--version`
+- [x] Add short aliases:
   - `-h`
   - `-V`
-- [ ] Display usage examples
-- [ ] Display available options clearly
-- [ ] Return proper exit codes for invalid arguments
+- [x] Display usage examples
+- [x] Display available options clearly
+- [x] Return proper exit codes for invalid arguments
 
 ### Example
 
