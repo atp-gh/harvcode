@@ -6,6 +6,7 @@ mod picker;
 mod walker;
 
 use std::env;
+use std::io::{self, Write};
 use std::path::PathBuf;
 use std::process;
 
@@ -40,7 +41,7 @@ fn expand_roots(cfg: &Config) -> Vec<PathBuf> {
 ///
 /// Returns:
 /// - `Some(Vec<PathBuf>)` on success
-/// - `None` if picker is requested but unavailable
+/// - `None` if picker is requested but unavailable or cancelled
 fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
     let all_files = expand_roots(cfg);
 
@@ -58,6 +59,15 @@ fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
     Some(all_files)
 }
 
+/// Write output to stdout.
+///
+/// Using explicit I/O instead of `print!` so failures can be reported.
+fn write_stdout(output: &str) -> io::Result<()> {
+    let mut stdout = io::stdout().lock();
+    stdout.write_all(output.as_bytes())?;
+    stdout.flush()
+}
+
 /// Application entry point.
 ///
 /// Flow:
@@ -65,7 +75,14 @@ fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
 /// 2. Resolve target files
 /// 3. Filter and read file contents
 /// 4. Format as Markdown code blocks
-/// 5. Copy to clipboard (fallback: stdout)
+/// 5. Write output to selected destinations
+///
+/// Output behavior:
+/// - No explicit output flags: copy to clipboard
+/// - `--clipboard`: copy to clipboard
+/// - `--stdout`: write to stdout
+/// - `--output <file>`: write to file
+/// - Output modes can be combined
 fn main() {
     // Collect CLI args and skip program name.
     let args: Vec<String> = env::args().skip(1).collect();
@@ -80,7 +97,7 @@ fn main() {
     let files = match resolve_files(&cfg) {
         Some(f) => f,
         None => {
-            eprintln!("No picker available (sk / fzf required)");
+            eprintln!("No picker available or selection cancelled (sk / fzf required)");
             process::exit(2);
         }
     };
@@ -99,10 +116,50 @@ fn main() {
         }
     }
 
-    // Attempt clipboard copy, fallback to stdout.
-    if clipboard::copy(&output) {
-        eprintln!("Copied to clipboard");
-    } else {
-        print!("{}", output);
+    let mut output_failed = false;
+
+    // Explicit stdout output.
+    if cfg.output.stdout {
+        if let Err(err) = write_stdout(&output) {
+            eprintln!("Failed to write to stdout: {}", err);
+            output_failed = true;
+        }
+    }
+
+    // File output.
+    if let Some(path) = &cfg.output.file {
+        match std::fs::write(path, &output) {
+            Ok(_) => {
+                eprintln!("Wrote output to {}", path.display());
+            }
+            Err(err) => {
+                eprintln!("Failed to write output file {}: {}", path.display(), err);
+                output_failed = true;
+            }
+        }
+    }
+
+    // Clipboard output.
+    if cfg.output.clipboard {
+        if clipboard::copy(&output) {
+            eprintln!("Copied to clipboard");
+        } else if cfg.output.explicit {
+            // Explicit `--clipboard` should fail loudly.
+            eprintln!("Failed to copy to clipboard");
+            output_failed = true;
+        } else {
+            // Backward-compatible default behavior:
+            // no output flag means clipboard-first, stdout fallback.
+            eprintln!("Clipboard unavailable; writing output to stdout");
+
+            if let Err(err) = write_stdout(&output) {
+                eprintln!("Failed to write fallback output to stdout: {}", err);
+                output_failed = true;
+            }
+        }
+    }
+
+    if output_failed {
+        process::exit(3);
     }
 }

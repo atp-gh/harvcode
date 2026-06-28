@@ -8,10 +8,35 @@ use crate::filter::Rules;
 /// - `roots`: input files/directories
 /// - `pick`: whether interactive selection is enabled
 /// - `rules`: file filtering rules
+/// - `output`: output behavior
 pub struct Config {
     pub roots: Vec<PathBuf>,
     pub pick: bool,
     pub rules: Rules,
+    pub output: OutputConfig,
+}
+
+/// Output behavior derived from CLI arguments.
+///
+/// Default:
+/// - If no output flags are specified, clipboard is enabled.
+///
+/// Explicit output flags:
+/// - `--clipboard` copy to clipboard
+/// - `--stdout` write to stdout
+/// - `--output <file>` write to file
+#[derive(Default)]
+pub struct OutputConfig {
+    pub clipboard: bool,
+    pub stdout: bool,
+    pub file: Option<PathBuf>,
+
+    /// Whether the user explicitly selected at least one output mode.
+    ///
+    /// Used to distinguish:
+    /// - implicit default clipboard behavior
+    /// - explicit `--clipboard`
+    pub explicit: bool,
 }
 
 /// Version string from Cargo.toml at compile time.
@@ -20,6 +45,10 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// Parse command-line arguments into a `Config`.
 ///
 /// Supported forms:
+/// - `--clipboard`
+/// - `--stdout`
+/// - `--output context.md`
+/// - `--output=context.md`
 /// - `--include-ext rs,toml,md`
 /// - `--include-ext=rs,toml,md`
 /// - `--exclude-ext lock,json`
@@ -30,10 +59,12 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// - Treats non-flag arguments as file/directory paths
 /// - Returns error on unknown flags or missing values
 /// - Defaults to current directory if no paths provided
+/// - Defaults to clipboard output if no output mode is specified
 pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     let mut pick = false;
     let mut roots = Vec::new();
     let mut rules = Rules::default();
+    let mut output = OutputConfig::default();
 
     let mut i = 0;
 
@@ -42,6 +73,22 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
 
         match arg.as_str() {
             "--pick" => pick = true,
+
+            "--clipboard" => {
+                output.clipboard = true;
+                output.explicit = true;
+            }
+
+            "--stdout" => {
+                output.stdout = true;
+                output.explicit = true;
+            }
+
+            "--output" => {
+                let value = require_value(&args, &mut i, "--output")?;
+                output.file = Some(PathBuf::from(value));
+                output.explicit = true;
+            }
 
             "-h" | "--help" => {
                 print_help();
@@ -67,6 +114,18 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
 
             "--exclude-file" => {
                 rules.exclude_files = parse_values(require_value(&args, &mut i, "--exclude-file")?);
+            }
+
+            _ if arg.starts_with("--output=") => {
+                let value = after_equal(arg);
+
+                if value.is_empty() {
+                    eprintln!("Missing value for --output");
+                    return Err(());
+                }
+
+                output.file = Some(PathBuf::from(value));
+                output.explicit = true;
             }
 
             _ if arg.starts_with("--include-ext=") => {
@@ -101,7 +160,18 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
         roots.push(PathBuf::from("."));
     }
 
-    Ok(Config { roots, pick, rules })
+    // v0.4.0 default behavior:
+    // If no output mode is specified, keep the old clipboard-first behavior.
+    if !output.explicit {
+        output.clipboard = true;
+    }
+
+    Ok(Config {
+        roots,
+        pick,
+        rules,
+        output,
+    })
 }
 
 /// Read the next CLI argument as the value for a flag.
@@ -149,6 +219,11 @@ Options:
   -V, --version                 Show version
       --pick                    Interactive selection (sk / fzf)
 
+Output:
+      --clipboard               Copy output to clipboard
+      --stdout                  Write output to stdout
+      --output <file>           Write output to file
+
 Filtering:
       --include-ext <list>      Include only extensions, e.g. rs,toml,md
       --exclude-ext <list>      Exclude extensions, e.g. lock,json
@@ -160,10 +235,18 @@ Examples:
   harvcode src
   harvcode src/main.rs
   harvcode --pick
+  harvcode --clipboard
+  harvcode --stdout
+  harvcode --output context.md
+  harvcode --stdout --output context.md
+  harvcode --clipboard --output context.md
   harvcode --include-ext rs,toml,md
   harvcode --exclude-ext lock,json
   harvcode --exclude-dir target,node_modules
   harvcode --exclude-file Cargo.lock
+
+Default:
+  If no output option is specified, harvcode copies to clipboard.
 "#,
         version = VERSION
     );

@@ -77,12 +77,17 @@ Make output behavior explicit and predictable.
 
 ### Planned
 
-* Explicitly output to clipboard
-* Explicitly output to stdout
-* Save output to a file
-* Allow combining output modes where reasonable
-* Improve fallback behavior
-* Add clear error messages when output fails
+- [x] Added `--clipboard` for explicit clipboard output.
+- [x] Added `--stdout` for explicit stdout output.
+- [x] Added `--output <file>` for writing output to a file.
+- [x] Output modes can be combined.
+
+
+### Exit Codes
+
+- `1`: CLI argument error
+- `2`: picker unavailable or cancelled
+- `3`: output failure
 
 ### Example
 
@@ -91,10 +96,6 @@ harvcode --clipboard
 harvcode --stdout
 harvcode --output context.md
 ```
-
-### Design Direction
-
-Default behavior may remain clipboard-first, but explicit output flags should make automation easier.
 
 ## v0.5.0 - Git Integration
 
