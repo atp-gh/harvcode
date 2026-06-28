@@ -256,3 +256,162 @@ Default:
 fn print_version() {
     println!("harvcode {}", VERSION);
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// Helper: parse a list of string slices into Config.
+    ///
+    /// This keeps individual tests short and focused on assertions,
+    /// instead of repeatedly converting `&str` into `String`.
+    fn parse(input: &[&str]) -> Config {
+        parse_args(input.iter().map(|s| s.to_string()).collect()).unwrap()
+    }
+
+    #[test]
+    fn defaults_to_current_dir() {
+        // When no path is provided, harvcode should behave as if "." was given.
+        // This preserves the original "run in current directory" workflow.
+        let cfg = parse(&[]);
+
+        assert_eq!(cfg.roots, vec![PathBuf::from(".")]);
+    }
+
+    #[test]
+    fn defaults_to_clipboard_when_no_output_flag_is_given() {
+        // v0.4.0 keeps backward compatibility:
+        // if the user does not specify --clipboard, --stdout, or --output,
+        // the default output mode remains clipboard.
+        let cfg = parse(&[]);
+
+        assert!(cfg.output.clipboard);
+        assert!(!cfg.output.stdout);
+        assert!(cfg.output.file.is_none());
+
+        // `explicit` remains false so main.rs can distinguish:
+        // - implicit default clipboard behavior
+        // - explicit `--clipboard`
+        //
+        // This matters because implicit clipboard failure may fall back to stdout,
+        // while explicit clipboard failure should be treated as an error.
+        assert!(!cfg.output.explicit);
+    }
+
+    #[test]
+    fn parses_stdout_output() {
+        // `--stdout` should enable stdout output only.
+        // It should not also enable clipboard implicitly.
+        let cfg = parse(&["--stdout"]);
+
+        assert!(!cfg.output.clipboard);
+        assert!(cfg.output.stdout);
+        assert!(cfg.output.file.is_none());
+        assert!(cfg.output.explicit);
+    }
+
+    #[test]
+    fn parses_clipboard_output() {
+        // Explicit `--clipboard` should enable clipboard output.
+        // It is marked explicit so failures can be reported clearly.
+        let cfg = parse(&["--clipboard"]);
+
+        assert!(cfg.output.clipboard);
+        assert!(!cfg.output.stdout);
+        assert!(cfg.output.file.is_none());
+        assert!(cfg.output.explicit);
+    }
+
+    #[test]
+    fn parses_output_file() {
+        // `--output context.md` should write to the provided file path.
+        // It should not enable clipboard or stdout unless requested separately.
+        let cfg = parse(&["--output", "context.md"]);
+
+        assert!(!cfg.output.clipboard);
+        assert!(!cfg.output.stdout);
+        assert_eq!(cfg.output.file, Some(PathBuf::from("context.md")));
+        assert!(cfg.output.explicit);
+    }
+
+    #[test]
+    fn parses_output_file_with_equal_syntax() {
+        // The `--output=file` form should behave the same as `--output file`.
+        let cfg = parse(&["--output=context.md"]);
+
+        assert!(!cfg.output.clipboard);
+        assert!(!cfg.output.stdout);
+        assert_eq!(cfg.output.file, Some(PathBuf::from("context.md")));
+        assert!(cfg.output.explicit);
+    }
+
+    #[test]
+    fn parses_combined_output_modes() {
+        // v0.4.0 allows output modes to be combined.
+        // This test ensures the parser does not treat them as mutually exclusive.
+        let cfg = parse(&["--clipboard", "--stdout", "--output", "context.md"]);
+
+        assert!(cfg.output.clipboard);
+        assert!(cfg.output.stdout);
+        assert_eq!(cfg.output.file, Some(PathBuf::from("context.md")));
+        assert!(cfg.output.explicit);
+    }
+
+    #[test]
+    fn returns_error_for_missing_output_value() {
+        // `--output` requires a following file path.
+        // Missing values should be rejected during argument parsing.
+        let result = parse_args(vec!["--output".to_string()]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn returns_error_for_empty_output_value() {
+        // `--output=` is syntactically present but semantically empty.
+        // Treating this as an error avoids accidentally writing to an invalid path.
+        let result = parse_args(vec!["--output=".to_string()]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn returns_error_for_unknown_option() {
+        // Unknown flags should fail fast instead of being treated as paths.
+        let result = parse_args(vec!["--unknown".to_string()]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_include_extensions() {
+        // Extension lists are comma-separated and normalized to lowercase.
+        let cfg = parse(&["--include-ext", "rs,toml,MD"]);
+
+        assert_eq!(cfg.rules.include_ext, vec!["rs", "toml", "md"]);
+    }
+
+    #[test]
+    fn parses_exclude_extensions() {
+        // Excluded extensions should also be normalized to lowercase.
+        let cfg = parse(&["--exclude-ext", "LOCK,JSON"]);
+
+        assert_eq!(cfg.rules.exclude_ext, vec!["lock", "json"]);
+    }
+
+    #[test]
+    fn parses_exclude_dirs() {
+        // Directory names are stored as lowercase values for case-insensitive matching.
+        let cfg = parse(&["--exclude-dir", "target,node_modules"]);
+
+        assert_eq!(cfg.rules.exclude_dirs, vec!["target", "node_modules"]);
+    }
+
+    #[test]
+    fn parses_exclude_files() {
+        // File names are stored as lowercase values for case-insensitive matching.
+        let cfg = parse(&["--exclude-file", "Cargo.lock,secret.rs"]);
+
+        assert_eq!(cfg.rules.exclude_files, vec!["cargo.lock", "secret.rs"]);
+    }
+}

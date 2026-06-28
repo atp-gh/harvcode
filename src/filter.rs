@@ -87,3 +87,137 @@ fn matches_name(path: &Path, names: &[String]) -> bool {
 
     names.contains(&name)
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper: create default filtering rules.
+    ///
+    /// Most tests start from the default behavior and then override
+    /// only the specific rule being tested.
+    fn rules() -> Rules {
+        Rules::default()
+    }
+
+    #[test]
+    fn hidden_file_is_invalid() {
+        // Files whose names start with "." should not be included.
+        // This prevents accidentally collecting files such as .env.
+        assert!(!is_valid(Path::new(".env"), &rules()));
+    }
+
+    #[test]
+    fn hidden_directory_should_be_skipped() {
+        // Hidden directories should be skipped during traversal.
+        // This includes directories like .git, .github, .vscode, etc.
+        assert!(should_skip_dir(Path::new(".git"), &rules()));
+    }
+
+    #[test]
+    fn default_binary_extensions_are_invalid() {
+        // Binary/archive files are always skipped by default.
+        // These exclusions are applied even if the user provides include rules.
+        assert!(!is_valid(Path::new("image.png"), &rules()));
+        assert!(!is_valid(Path::new("archive.zip"), &rules()));
+        assert!(!is_valid(Path::new("Cargo.lock"), &rules()));
+    }
+
+    #[test]
+    fn normal_text_files_are_valid() {
+        // Common source/documentation files should be included by default.
+        assert!(is_valid(Path::new("main.rs"), &rules()));
+        assert!(is_valid(Path::new("README.md"), &rules()));
+    }
+
+    #[test]
+    fn file_without_extension_is_valid_by_default() {
+        // Extensionless files such as Makefile are treated as text by default.
+        assert!(is_valid(Path::new("Makefile"), &rules()));
+    }
+
+    #[test]
+    fn include_ext_allows_only_matching_extensions() {
+        // When include_ext is set, only matching extensions should pass.
+        let mut rules = Rules::default();
+        rules.include_ext = vec!["rs".to_string()];
+
+        assert!(is_valid(Path::new("main.rs"), &rules));
+        assert!(!is_valid(Path::new("README.md"), &rules));
+    }
+
+    #[test]
+    fn include_ext_rejects_extensionless_files() {
+        // If include_ext is provided, files without extensions should be excluded.
+        //
+        // Example:
+        // `harvcode --include-ext rs`
+        // should not include "Makefile".
+        let mut rules = Rules::default();
+        rules.include_ext = vec!["rs".to_string()];
+
+        assert!(!is_valid(Path::new("Makefile"), &rules));
+    }
+
+    #[test]
+    fn include_ext_does_not_override_default_skip_ext() {
+        // Default skip extensions are always applied.
+        // Even if the user explicitly includes "png", binary files stay excluded.
+        let mut rules = Rules::default();
+        rules.include_ext = vec!["png".to_string()];
+
+        assert!(!is_valid(Path::new("image.png"), &rules));
+    }
+
+    #[test]
+    fn exclude_ext_rejects_matching_extension() {
+        // exclude_ext should reject files with matching extensions.
+        let mut rules = Rules::default();
+        rules.exclude_ext = vec!["json".to_string()];
+
+        assert!(!is_valid(Path::new("config.json"), &rules));
+        assert!(is_valid(Path::new("main.rs"), &rules));
+    }
+
+    #[test]
+    fn exclude_file_rejects_matching_filename_case_insensitively() {
+        // exclude_file compares only the file name, not the whole path.
+        // Matching is case-insensitive.
+        let mut rules = Rules::default();
+        rules.exclude_files = vec!["secret.rs".to_string()];
+
+        assert!(!is_valid(Path::new("secret.rs"), &rules));
+        assert!(!is_valid(Path::new("SECRET.RS"), &rules));
+        assert!(is_valid(Path::new("main.rs"), &rules));
+    }
+
+    #[test]
+    fn exclude_dir_rejects_matching_directory_case_insensitively() {
+        // exclude_dir compares directory names case-insensitively.
+        let mut rules = Rules::default();
+        rules.exclude_dirs = vec!["target".to_string()];
+
+        assert!(should_skip_dir(Path::new("target"), &rules));
+        assert!(should_skip_dir(Path::new("TARGET"), &rules));
+        assert!(!should_skip_dir(Path::new("src"), &rules));
+    }
+
+    #[test]
+    fn exclude_file_matches_file_name_not_full_path() {
+        // The rule should match the final file name.
+        // This means "src/secret.rs" should be excluded when "secret.rs" is listed.
+        let mut rules = Rules::default();
+        rules.exclude_files = vec!["secret.rs".to_string()];
+
+        assert!(!is_valid(Path::new("src/secret.rs"), &rules));
+    }
+
+    #[test]
+    fn exclude_dir_matches_directory_name_not_full_path() {
+        // The rule should match the final directory name.
+        // This means "build/target" should be skipped when "target" is listed.
+        let mut rules = Rules::default();
+        rules.exclude_dirs = vec!["target".to_string()];
+
+        assert!(should_skip_dir(Path::new("build/target"), &rules));
+    }
+}
