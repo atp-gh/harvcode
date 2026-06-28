@@ -16,14 +16,14 @@ use args::Config;
 /// Rules:
 /// - If path is a file → include directly
 /// - If path is a directory → recursively collect files
-fn expand_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
+fn expand_roots(cfg: &Config) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
-    for root in roots {
+    for root in &cfg.roots {
         if root.is_file() {
             files.push(root.clone());
         } else if root.is_dir() {
-            files.extend(walker::collect(root));
+            files.extend(walker::collect(root, &cfg.rules));
         }
     }
 
@@ -42,10 +42,10 @@ fn expand_roots(roots: &[PathBuf]) -> Vec<PathBuf> {
 /// - `Some(Vec<PathBuf>)` on success
 /// - `None` if picker is requested but unavailable
 fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
-    let all_files = expand_roots(&cfg.roots);
+    let all_files = expand_roots(cfg);
 
     if cfg.pick {
-        // Convert file paths into newline-separated input for picker
+        // Convert file paths into newline-separated input for picker.
         let list = all_files
             .into_iter()
             .map(|p| p.display().to_string())
@@ -67,16 +67,16 @@ fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
 /// 4. Format as Markdown code blocks
 /// 5. Copy to clipboard (fallback: stdout)
 fn main() {
-    // Collect CLI args (skip program name)
+    // Collect CLI args and skip program name.
     let args: Vec<String> = env::args().skip(1).collect();
 
-    // Parse CLI arguments
+    // Parse CLI arguments.
     let cfg = match args::parse_args(args) {
         Ok(c) => c,
         Err(_) => process::exit(1),
     };
 
-    // Resolve file list (may involve interactive picker)
+    // Resolve file list, optionally through interactive picker.
     let files = match resolve_files(&cfg) {
         Some(f) => f,
         None => {
@@ -85,12 +85,12 @@ fn main() {
         }
     };
 
-    // Pre-allocate output buffer (1MB initial capacity)
+    // Pre-allocate output buffer with 1MB initial capacity.
     let mut output = String::with_capacity(1024 * 1024);
 
-    // Read, filter, and format files
+    // Read, filter, and format files.
     for path in files {
-        if !filter::is_valid(&path) {
+        if !filter::is_valid(&path, &cfg.rules) {
             continue;
         }
 
@@ -99,7 +99,7 @@ fn main() {
         }
     }
 
-    // Attempt clipboard copy, fallback to stdout
+    // Attempt clipboard copy, fallback to stdout.
     if clipboard::copy(&output) {
         eprintln!("Copied to clipboard");
     } else {

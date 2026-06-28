@@ -1,26 +1,33 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-/// Recursively collect all files under a directory
-pub fn collect(root: &Path) -> Vec<PathBuf> {
+use crate::filter::Rules;
+
+/// Recursively collect all files under a directory.
+///
+/// Directory filtering is applied during traversal to avoid unnecessary work.
+pub fn collect(root: &Path, rules: &Rules) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    visit(root, &mut files);
+    visit(root, rules, &mut files);
     files
 }
 
-/// Depth-first traversal
-/// Skips hidden files and directories
-fn visit(dir: &Path, out: &mut Vec<PathBuf>) {
+/// Depth-first traversal.
+///
+/// Skips:
+/// - hidden directories
+/// - directories matched by `--exclude-dir`
+fn visit(dir: &Path, rules: &Rules, out: &mut Vec<PathBuf>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
 
-            if super::filter::is_hidden(&path) {
-                continue;
-            }
-
             if path.is_dir() {
-                visit(&path, out);
+                if super::filter::should_skip_dir(&path, rules) {
+                    continue;
+                }
+
+                visit(&path, rules, out);
             } else {
                 out.push(path);
             }
