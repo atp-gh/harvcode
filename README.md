@@ -46,7 +46,7 @@ Clone the repository:
 ```bash
 git clone https://github.com/atp-gh/harvcode.git
 cd harvcode
-````
+```
 
 Build with Cargo:
 
