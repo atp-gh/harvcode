@@ -62,9 +62,14 @@ harvcode --exclude-dir target,node_modules
 harvcode --exclude-file Cargo.lock
 ```
 
-## v0.3.1 - Fixed X11 clipboard behavior.
 
-xclip now uses '-selection clipboard' to copy content to the normal system clipboard instead of the primary selection used by middle-click paste.
+## v0.3.1 - Clipboard Fix
+
+### Fixed
+
+- [x] Use `xclip -selection clipboard` on X11
+- [x] Fix clipboard output going to primary selection instead of system clipboard
+
 
 ## v0.4.0 - Output System Refactor
 
