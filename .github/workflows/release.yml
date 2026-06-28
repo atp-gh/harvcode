@@ -5,46 +5,23 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
+env:
+  BIN_NAME: harvcode
+  RELEASE_TAG: ${{ github.ref_name }}
+
 jobs:
   build:
-    name: Build ${{ matrix.name }}
+    name: Build release assets
     runs-on: ubuntu-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: x86-linux-gnu
-            target: x86_64-unknown-linux-gnu
-            binary_ext: ""
-
-          - name: x86-linux-musl
-            target: x86_64-unknown-linux-musl
-            binary_ext: ""
-
-          - name: arm-linux-gnu
-            target: aarch64-unknown-linux-gnu
-            binary_ext: ""
-
-          - name: arm-linux-musl
-            target: aarch64-unknown-linux-musl
-            binary_ext: ""
-
-          - name: x64-windows
-            target: x86_64-pc-windows-gnu
-            binary_ext: ".exe"
-
-          - name: x32-windows
-            target: i686-pc-windows-gnu
-            binary_ext: ".exe"
-
-          - name: x64-freebsd
-            target: x86_64-unknown-freebsd
-            binary_ext: ""
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -56,43 +33,96 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: release-cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          key: release-cargo-${{ runner.os }}-${{ env.RELEASE_TAG }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
-            release-cargo-${{ runner.os }}-${{ matrix.target }}-
+            release-cargo-${{ runner.os }}-${{ env.RELEASE_TAG }}-
             release-cargo-${{ runner.os }}-
 
       - name: Install cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build
-        run: cross build --release --locked --target ${{ matrix.target }}
+      - name: Ensure GitHub Release exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
 
-      - name: Prepare artifact
+          echo "Release tag: ${RELEASE_TAG}"
+
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Release ${RELEASE_TAG} already exists."
+          else
+            echo "Release ${RELEASE_TAG} does not exist. Creating it..."
+            gh release create "${RELEASE_TAG}" \
+              --title "${RELEASE_TAG}" \
+              --notes "Release ${RELEASE_TAG}"
+          fi
+
+      - name: Build all targets
         shell: bash
         run: |
           set -euo pipefail
 
-          BIN_NAME="harvcode"
-          TARGET="${{ matrix.target }}"
-          PACKAGE_NAME="harvcode-${{ github.ref_name }}-${{ matrix.name }}"
-          OUT_DIR="dist/${PACKAGE_NAME}"
+          targets=(
+            "x86_64-unknown-linux-gnu:x86_64-unknown-linux-gnu:"
+            "x86_64-unknown-linux-musl:x86_64-unknown-linux-musl:"
+            "aarch64-unknown-linux-gnu:aarch64-unknown-linux-gnu:"
+            "aarch64-unknown-linux-musl:aarch64-unknown-linux-musl:"
+            "x86_64-pc-windows-gnu:x86_64-pc-windows-gnu:.exe"
+            "i686-pc-windows-gnu:i686-pc-windows-gnu:.exe"
+            "x86_64-unknown-freebsd:x86_64-unknown-freebsd:"
+          )
 
-          mkdir -p "${OUT_DIR}"
+          mkdir -p dist
 
-          cp "target/${TARGET}/release/${BIN_NAME}${{ matrix.binary_ext }}" "${OUT_DIR}/"
+          for item in "${targets[@]}"; do
+            IFS=":" read -r name target binary_ext <<< "${item}"
 
-          if [[ "${{ matrix.binary_ext }}" == ".exe" ]]; then
-            cd dist
-            zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}"
-          else
-            cd dist
-            tar -czf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
+            echo "========================================"
+            echo "Building ${name}"
+            echo "Target: ${target}"
+            echo "========================================"
+
+            cross build --release --locked --target "${target}"
+
+            package_name="${BIN_NAME}-${RELEASE_TAG}-${name}"
+            out_dir="dist/${package_name}"
+
+            mkdir -p "${out_dir}"
+
+            cp "target/${target}/release/${BIN_NAME}${binary_ext}" "${out_dir}/"
+
+            if [[ "${binary_ext}" == ".exe" ]]; then
+              (
+                cd dist
+                zip -r "${package_name}.zip" "${package_name}"
+              )
+            else
+              (
+                cd dist
+                tar -czf "${package_name}.tar.gz" "${package_name}"
+              )
+            fi
+
+            rm -rf "${out_dir}"
+          done
+
+          echo "Generated assets:"
+          ls -lah dist
+
+      - name: Upload assets to GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+
+          assets=(dist/*.tar.gz dist/*.zip)
+
+          if (( ${#assets[@]} == 0 )); then
+            echo "No release assets found."
+            exit 1
           fi
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: harvcode-${{ github.ref_name }}-${{ matrix.name }}
-          path: |
-            dist/*.tar.gz
-            dist/*.zip
+          gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
