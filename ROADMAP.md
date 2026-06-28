@@ -97,78 +97,7 @@ harvcode --stdout
 harvcode --output context.md
 ```
 
-## v0.5.0 - Git Integration
-
-Add Git-aware collection modes for repository workflows.
-
-### Planned
-
-* Respect `.gitignore`
-* Collect only Git-tracked files
-* Collect only modified files
-* Collect only staged files
-* Optionally include untracked files
-* Skip `.git` internals automatically
-* Gracefully fallback when not inside a Git repository
-
-### Example
-
-```bash
-harvcode --git-tracked
-harvcode --git-modified
-harvcode --git-staged
-harvcode --respect-gitignore
-```
-
-### Use Cases
-
-* Create AI context only from changed files
-* Review staged changes before committing
-* Export clean repository source without build artifacts
-
-## v0.6.0 - Interactive Picker Improvements
-
-Improve file selection experience in interactive mode.
-
-### Planned
-
-* Add file preview in picker
-* Allow picker command configuration
-* Define picker priority strategy
-* Support custom picker arguments
-* Improve behavior when no picker is installed
-* Keep `sk` and `fzf` support
-
-### Picker Priority
-
-Default priority:
-
-```text
-sk > fzf
-```
-
-Future configurable behavior:
-
-```bash
-harvcode --pick --picker fzf
-harvcode --pick --picker sk
-```
-
-### Preview Example
-
-Possible preview behavior:
-
-```bash
-fzf --multi --preview 'bat --style=numbers --color=always {}'
-```
-
-or fallback:
-
-```bash
-fzf --multi --preview 'sed -n "1,120p" {}'
-```
-
-## v0.7.0 - Configuration File
+## v0.5.0 - Configuration File
 
 Allow project-level and user-level configuration.
 
@@ -213,6 +142,70 @@ max_file_size = "1MB"
 respect_gitignore = true
 tracked_only = false
 modified_only = false
+```
+
+## v0.6.0 - Git Integration
+
+Add Git-aware collection modes for repository workflows.
+
+### Planned
+
+* Respect `.gitignore`
+* Skip `.git` internals automatically
+* Gracefully fallback when not inside a Git repository
+
+### Example
+
+```bash
+harvcode --gitignore
+```
+
+### Use Cases
+
+* Create AI context only from changed files
+* Review staged changes before committing
+* Export clean repository source without build artifacts
+
+## v0.7.0 - Interactive Picker Improvements
+
+Improve file selection experience in interactive mode.
+
+### Planned
+
+* Add file preview in picker
+* Allow picker command configuration
+* Define picker priority strategy
+* Support custom picker arguments
+* Improve behavior when no picker is installed
+* Keep `sk` and `fzf` support
+
+### Picker Priority
+
+Default priority:
+
+```text
+sk > fzf
+```
+
+Future configurable behavior:
+
+```bash
+harvcode --pick --picker fzf
+harvcode --pick --picker sk
+```
+
+### Preview Example
+
+Possible preview behavior:
+
+```bash
+fzf --multi --preview 'bat --style=numbers --color=always {}'
+```
+
+or fallback:
+
+```bash
+fzf --multi --preview 'sed -n "1,120p" {}'
 ```
 
 ## v0.8.0 - File Size Limits
