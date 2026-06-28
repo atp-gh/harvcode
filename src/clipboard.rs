@@ -1,22 +1,68 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-/// Copy content to system clipboard
-/// Supports common tools across platforms:
-/// - Linux: wl-copy, xclip
+/// Clipboard command definition
+struct ClipboardCommand {
+    program: &'static str,
+    args: &'static [&'static str],
+}
+
+/// Copy content to the system clipboard
+///
+/// Supported tools:
+/// - Wayland: wl-copy
+/// - X11: xclip -selection clipboard
 /// - macOS: pbcopy
 /// - Windows: clip
 pub fn copy(content: &str) -> bool {
-    let cmds = ["wl-copy", "xclip", "pbcopy", "clip"];
+    let commands = [
+        ClipboardCommand {
+            program: "wl-copy",
+            args: &[],
+        },
+        ClipboardCommand {
+            program: "xclip",
+            args: &["-selection", "clipboard"],
+        },
+        ClipboardCommand {
+            program: "pbcopy",
+            args: &[],
+        },
+        ClipboardCommand {
+            program: "clip",
+            args: &[],
+        },
+    ];
 
-    for cmd in cmds {
-        if let Ok(mut child) = Command::new(cmd).stdin(Stdio::piped()).spawn() {
-            if let Some(stdin) = child.stdin.as_mut() {
-                let _ = stdin.write_all(content.as_bytes());
-                return true;
-            }
+    for cmd in commands {
+        if try_copy(cmd.program, cmd.args, content) {
+            return true;
         }
     }
 
     false
+}
+
+/// Try copying content using a specific clipboard command
+fn try_copy(program: &str, args: &[&str], content: &str) -> bool {
+    let mut child = match Command::new(program)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(_) => return false,
+    };
+
+    if let Some(mut stdin) = child.stdin.take() {
+        if stdin.write_all(content.as_bytes()).is_err() {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    child.wait().map(|status| status.success()).unwrap_or(false)
 }
