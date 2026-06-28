@@ -45,13 +45,13 @@ Add more precise control over what files are collected.
 
 ### Planned
 
-* Include files by extension
-* Exclude files by extension
-* Exclude specific directories
-* Exclude specific files
-* Support multiple filter values
-* Make filtering case-insensitive where appropriate
-* Keep default binary/archive exclusions
+- [x] Include files by extension
+- [x] Exclude files by extension
+- [x] Exclude specific directories
+- [x] Exclude specific files
+- [x] Support multiple filter values
+- [x] Make filtering case-insensitive where appropriate
+- [x] Keep default binary/archive exclusions
 
 ### Example
 
