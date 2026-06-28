@@ -1,0 +1,98 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: x86-linux-gnu
+            target: x86_64-unknown-linux-gnu
+            binary_ext: ""
+
+          - name: x86-linux-musl
+            target: x86_64-unknown-linux-musl
+            binary_ext: ""
+
+          - name: arm-linux-gnu
+            target: aarch64-unknown-linux-gnu
+            binary_ext: ""
+
+          - name: arm-linux-musl
+            target: aarch64-unknown-linux-musl
+            binary_ext: ""
+
+          - name: x64-windows
+            target: x86_64-pc-windows-gnu
+            binary_ext: ".exe"
+
+          - name: x32-windows
+            target: i686-pc-windows-gnu
+            binary_ext: ".exe"
+
+          - name: x64-freebsd
+            target: x86_64-unknown-freebsd
+            binary_ext: ""
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: release-cargo-${{ runner.os }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            release-cargo-${{ runner.os }}-${{ matrix.target }}-
+            release-cargo-${{ runner.os }}-
+
+      - name: Install cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Prepare artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BIN_NAME="harvcode"
+          TARGET="${{ matrix.target }}"
+          PACKAGE_NAME="harvcode-${{ github.ref_name }}-${{ matrix.name }}"
+          OUT_DIR="dist/${PACKAGE_NAME}"
+
+          mkdir -p "${OUT_DIR}"
+
+          cp "target/${TARGET}/release/${BIN_NAME}${{ matrix.binary_ext }}" "${OUT_DIR}/"
+
+          if [[ "${{ matrix.binary_ext }}" == ".exe" ]]; then
+            cd dist
+            zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}"
+          else
+            cd dist
+            tar -czf "${PACKAGE_NAME}.tar.gz" "${PACKAGE_NAME}"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: harvcode-${{ github.ref_name }}-${{ matrix.name }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
