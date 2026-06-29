@@ -97,7 +97,93 @@ harvcode --stdout
 harvcode --output context.md
 ```
 
-## v0.5.0 - Configuration File
+## v0.4.1 - Picker Selection Improvement
+
+Improve interactive picker selection.
+
+### Planned
+
+- [ ] Allow users to choose the picker
+- [ ] Define picker priority strategy
+- [ ] Improve behavior when no picker is installed
+- [ ] Keep `sk` and `fzf` support
+
+
+### Picker Priority
+
+Default priority:
+
+```text
+sk > fzf
+```
+
+### Examples
+
+Use the default picker:
+
+```bash
+harvcode --pick
+```
+
+Force a specific picker:
+
+```bash
+harvcode --pick --picker fzf
+harvcode --pick --picker sk
+```
+
+## v0.5.0 - Git Integration
+
+Add Git-aware collection modes for repository workflows.
+
+### Planned
+
+* Respect `.gitignore`
+* Skip `.git` internals automatically
+* Gracefully fallback when not inside a Git repository
+
+### Example
+
+```bash
+harvcode --gitignore
+```
+
+### Use Cases
+
+* Create AI context only from changed files
+* Review staged changes before committing
+* Export clean repository source without build artifacts
+
+
+## v0.6.0 - File Size Limits
+
+Avoid collecting huge files accidentally.
+
+### Planned
+
+* Add max file size limit
+* Skip files larger than configured size
+* Show skipped file count
+* Optionally print skipped file paths
+* Support human-readable size values
+
+### Example
+
+```bash
+harvcode --max-size 512KB
+harvcode --max-size 1MB
+harvcode --max-size 5MB
+```
+
+### Behavior
+
+Files larger than the limit should be skipped safely.
+
+```text
+Skipped large file: data/output.log
+```
+
+## v0.7.0 - Configuration File
 
 Allow project-level and user-level configuration.
 
@@ -148,99 +234,7 @@ file = "context.md" #
 command = "fzf" # Optional skim or fzf
 ```
 
-## v0.6.0 - Git Integration
-
-Add Git-aware collection modes for repository workflows.
-
-### Planned
-
-* Respect `.gitignore`
-* Skip `.git` internals automatically
-* Gracefully fallback when not inside a Git repository
-
-### Example
-
-```bash
-harvcode --gitignore
-```
-
-### Use Cases
-
-* Create AI context only from changed files
-* Review staged changes before committing
-* Export clean repository source without build artifacts
-
-## v0.7.0 - Interactive Picker Improvements
-
-Improve file selection experience in interactive mode.
-
-### Planned
-
-* Add file preview in picker
-* Allow picker command configuration
-* Define picker priority strategy
-* Support custom picker arguments
-* Improve behavior when no picker is installed
-* Keep `sk` and `fzf` support
-
-### Picker Priority
-
-Default priority:
-
-```text
-sk > fzf
-```
-
-Future configurable behavior:
-
-```bash
-harvcode --pick --picker fzf
-harvcode --pick --picker sk
-```
-
-### Preview Example
-
-Possible preview behavior:
-
-```bash
-fzf --multi --preview 'bat --style=numbers --color=always {}'
-```
-
-or fallback:
-
-```bash
-fzf --multi --preview 'sed -n "1,120p" {}'
-```
-
-## v0.8.0 - File Size Limits
-
-Avoid collecting huge files accidentally.
-
-### Planned
-
-* Add max file size limit
-* Skip files larger than configured size
-* Show skipped file count
-* Optionally print skipped file paths
-* Support human-readable size values
-
-### Example
-
-```bash
-harvcode --max-size 512KB
-harvcode --max-size 1MB
-harvcode --max-size 5MB
-```
-
-### Behavior
-
-Files larger than the limit should be skipped safely.
-
-```text
-Skipped large file: data/output.log
-```
-
-## v0.9.0 - Better Reporting
+## v0.8.0 - Better Reporting
 
 Improve user feedback without making normal output noisy.
 
