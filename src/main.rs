@@ -53,7 +53,7 @@ fn resolve_files(cfg: &Config) -> Option<Vec<PathBuf>> {
             .collect::<Vec<_>>()
             .join("\n");
 
-        return picker::pick(&list).map(|v| v.into_iter().map(PathBuf::from).collect());
+        return picker::pick(&list, cfg.picker).map(|v| v.into_iter().map(PathBuf::from).collect());
     }
 
     Some(all_files)

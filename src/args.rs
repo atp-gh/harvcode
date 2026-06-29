@@ -3,15 +3,24 @@ use std::process;
 
 use crate::filter::Rules;
 
+/// Interactive picker backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PickerKind {
+    Sk,
+    Fzf,
+}
+
 /// Runtime configuration derived from CLI arguments.
 ///
 /// - `roots`: input files/directories
 /// - `pick`: whether interactive selection is enabled
+/// - `picker`: selected picker backend
 /// - `rules`: file filtering rules
 /// - `output`: output behavior
 pub struct Config {
     pub roots: Vec<PathBuf>,
     pub pick: bool,
+    pub picker: Option<PickerKind>,
     pub rules: Rules,
     pub output: OutputConfig,
 }
@@ -62,6 +71,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// - Defaults to clipboard output if no output mode is specified
 pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     let mut pick = false;
+    let mut picker = None;
     let mut roots = Vec::new();
     let mut rules = Rules::default();
     let mut output = OutputConfig::default();
@@ -73,6 +83,12 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
 
         match arg.as_str() {
             "--pick" => pick = true,
+
+            "--picker" => {
+                let value = require_value(&args, &mut i, "--picker")?;
+                picker = Some(parse_picker(value)?);
+                pick = true;
+            }
 
             "--clipboard" => {
                 output.clipboard = true;
@@ -128,6 +144,18 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
                 output.explicit = true;
             }
 
+            _ if arg.starts_with("--picker=") => {
+                let value = after_equal(arg);
+
+                if value.is_empty() {
+                    eprintln!("Missing value for --picker");
+                    return Err(());
+                }
+
+                picker = Some(parse_picker(value)?);
+                pick = true;
+            }
+
             _ if arg.starts_with("--include-ext=") => {
                 rules.include_ext = parse_values(after_equal(arg));
             }
@@ -169,6 +197,7 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     Ok(Config {
         roots,
         pick,
+        picker,
         rules,
         output,
     })
@@ -190,6 +219,19 @@ fn after_equal(arg: &str) -> String {
     arg.split_once('=')
         .map(|(_, value)| value.to_string())
         .unwrap_or_default()
+}
+
+/// Parse picker backend.
+fn parse_picker(value: String) -> Result<PickerKind, ()> {
+    match value.to_ascii_lowercase().as_str() {
+        "sk" => Ok(PickerKind::Sk),
+        "fzf" => Ok(PickerKind::Fzf),
+        _ => {
+            eprintln!("Unsupported picker: {}", value);
+            eprintln!("Available pickers: sk, fzf");
+            Err(())
+        }
+    }
 }
 
 /// Parse comma-separated values.
@@ -218,6 +260,7 @@ Options:
   -h, --help                    Show help
   -V, --version                 Show version
       --pick                    Interactive selection (sk / fzf)
+      --picker <sk|fzf>          Choose picker manually; implies --pick
 
 Output:
       --clipboard               Copy output to clipboard
@@ -235,6 +278,7 @@ Examples:
   harvcode src
   harvcode src/main.rs
   harvcode --pick
+  harvcode --picker fzf
   harvcode --clipboard
   harvcode --stdout
   harvcode --output context.md
@@ -413,5 +457,48 @@ mod tests {
         let cfg = parse(&["--exclude-file", "Cargo.lock,secret.rs"]);
 
         assert_eq!(cfg.rules.exclude_files, vec!["cargo.lock", "secret.rs"]);
+    }
+
+    #[test]
+    fn parses_picker_fzf_and_implies_pick() {
+        // `--picker fzf` should select fzf and enable interactive mode.
+        let cfg = parse(&["--picker", "fzf"]);
+
+        assert!(cfg.pick);
+        assert_eq!(cfg.picker, Some(PickerKind::Fzf));
+    }
+
+    #[test]
+    fn parses_picker_sk_and_implies_pick() {
+        // `--picker sk` should select sk and enable interactive mode.
+        let cfg = parse(&["--picker", "sk"]);
+
+        assert!(cfg.pick);
+        assert_eq!(cfg.picker, Some(PickerKind::Sk));
+    }
+
+    #[test]
+    fn parses_picker_with_equal_syntax() {
+        // The `--picker=fzf` form should behave the same as `--picker fzf`.
+        let cfg = parse(&["--picker=fzf"]);
+
+        assert!(cfg.pick);
+        assert_eq!(cfg.picker, Some(PickerKind::Fzf));
+    }
+
+    #[test]
+    fn returns_error_for_unknown_picker() {
+        // Only supported picker backends should be accepted.
+        let result = parse_args(vec!["--picker".to_string(), "vim".to_string()]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn returns_error_for_empty_picker_value() {
+        // `--picker=` is syntactically present but semantically empty.
+        let result = parse_args(vec!["--picker=".to_string()]);
+
+        assert!(result.is_err());
     }
 }
