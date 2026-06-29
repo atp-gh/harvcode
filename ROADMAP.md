@@ -103,13 +103,26 @@ Allow project-level and user-level configuration.
 
 ### Planned
 
-* Support config file
-* Define default include rules
-* Define default exclude rules
-* Define output preference
-* Define picker preference
-* Define max file size
-* Allow CLI arguments to override config values
+- [ ] Support project-level configuration files
+- [ ] Support user-level configuration file
+- [ ] Support explicit config file path via CLI
+- [ ] Define default include rules
+- [ ] Define default exclude rules
+- [ ] Define output preference
+- [ ] Define picker preference
+- [ ] Allow CLI arguments to override config values
+
+### Configuration Priority
+
+Configuration values are resolved in the following order, from lowest to highest priority:
+
+```text
+Built-in defaults
+< User config
+< Project config
+< Explicit config file via --config
+< CLI arguments
+```
 
 ### Possible Config Files
 
@@ -128,20 +141,11 @@ exclude_dirs = ["target", "node_modules", ".git"]
 exclude_files = ["Cargo.lock"]
 
 [output]
-mode = "clipboard"
-file = "context.md"
+mode = "clipboard" # Optional clipboard, stdout or file
+file = "context.md" # 
 
 [picker]
-command = "fzf"
-preview = true
-
-[limits]
-max_file_size = "1MB"
-
-[git]
-respect_gitignore = true
-tracked_only = false
-modified_only = false
+command = "fzf" # Optional skim or fzf
 ```
 
 ## v0.6.0 - Git Integration
