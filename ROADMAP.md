@@ -37,7 +37,7 @@ Improve the command-line interface and make the tool easier to discover.
 ```bash
 harvcode --help
 harvcode --version
-````
+```
 
 ## v0.3.0 - Enhanced Filtering
 
@@ -62,14 +62,12 @@ harvcode --exclude-dir target,node_modules
 harvcode --exclude-file Cargo.lock
 ```
 
-
 ## v0.3.1 - Clipboard Fix
 
 ### Fixed
 
 - [x] Use `xclip -selection clipboard` on X11
 - [x] Fix clipboard output going to primary selection instead of system clipboard
-
 
 ## v0.4.0 - Output System Refactor
 
@@ -81,7 +79,6 @@ Make output behavior explicit and predictable.
 - [x] Added `--stdout` for explicit stdout output.
 - [x] Added `--output <file>` for writing output to a file.
 - [x] Output modes can be combined.
-
 
 ### Exit Codes
 
@@ -108,7 +105,6 @@ Improve interactive picker selection.
 - [ ] Improve behavior when no picker is installed
 - [ ] Keep `sk` and `fzf` support
 
-
 ### Picker Priority
 
 Default priority:
@@ -132,120 +128,17 @@ harvcode --pick --picker fzf
 harvcode --pick --picker sk
 ```
 
-## v0.5.0 - Git Integration
-
-Add Git-aware collection modes for repository workflows.
+## v0.5.0 - Better Reporting
 
 ### Planned
 
-* Respect `.gitignore`
-* Skip `.git` internals automatically
-* Gracefully fallback when not inside a Git repository
-
-### Example
-
-```bash
-harvcode --gitignore
-```
-
-### Use Cases
-
-* Create AI context only from changed files
-* Review staged changes before committing
-* Export clean repository source without build artifacts
-
-
-## v0.6.0 - File Size Limits
-
-Avoid collecting huge files accidentally.
-
-### Planned
-
-* Add max file size limit
-* Skip files larger than configured size
-* Show skipped file count
-* Optionally print skipped file paths
-* Support human-readable size values
-
-### Example
-
-```bash
-harvcode --max-size 512KB
-harvcode --max-size 1MB
-harvcode --max-size 5MB
-```
-
-### Behavior
-
-Files larger than the limit should be skipped safely.
-
-```text
-Skipped large file: data/output.log
-```
-
-## v0.7.0 - Configuration File
-
-Allow project-level and user-level configuration.
-
-### Planned
-
-- [ ] Support project-level configuration files
-- [ ] Support user-level configuration file
-- [ ] Support explicit config file path via CLI
-- [ ] Define default include rules
-- [ ] Define default exclude rules
-- [ ] Define output preference
-- [ ] Define picker preference
-- [ ] Allow CLI arguments to override config values
-
-### Configuration Priority
-
-Configuration values are resolved in the following order, from lowest to highest priority:
-
-```text
-Built-in defaults
-< User config
-< Project config
-< Explicit config file via --config
-< CLI arguments
-```
-
-### Possible Config Files
-
-```text
-harvcode.toml
-.harvcode.toml
-```
-
-### Example
-
-```toml
-[filter]
-include_ext = ["rs", "toml", "md"]
-exclude_ext = ["lock", "png", "jpg"]
-exclude_dirs = ["target", "node_modules", ".git"]
-exclude_files = ["Cargo.lock"]
-
-[output]
-mode = "clipboard" # Optional clipboard, stdout or file
-file = "context.md" # 
-
-[picker]
-command = "fzf" # Optional skim or fzf
-```
-
-## v0.8.0 - Better Reporting
-
-Improve user feedback without making normal output noisy.
-
-### Planned
-
-* Report copied file count
-* Report skipped file count
-* Report total output size
-* Report clipboard success/failure
-* Add quiet mode
-* Add verbose mode
+- [ ] Report collected file count
+- [ ] Report skipped file count
+- [ ] Report total output size
+- [ ] Report output destination
+- [ ] Report clipboard success or failure
+- [ ] Add `--quiet`
+- [ ] Add `--verbose`
 
 ### Example
 
@@ -261,6 +154,68 @@ Collected files: 24
 Skipped files: 8
 Output size: 132 KB
 Copied to clipboard
+```
+
+## v0.5.1 - File Listing Mode
+
+Add a simple listing mode to preview which files would be collected.
+
+### Planned
+
+- [ ] Add `--list`
+- [ ] Print only collected file paths
+- [ ] Do not output file contents in list mode
+- [ ] Do not copy to clipboard in list mode
+- [ ] Do not write to output file in list mode
+- [ ] Respect all existing filters
+- [ ] Respect excluded binary/archive files
+- [ ] Use stable path ordering
+
+### Example
+
+```bash
+harvcode --list
+harvcode src --list
+harvcode --include-ext rs,md --list
+harvcode --exclude-dir target,node_modules --list
+```
+
+Possible Output
+
+```text
+Cargo.toml
+README.md
+src/main.rs
+src/cli.rs
+src/output.rs
+```
+
+## v0.6.0 - File Size Limits
+
+Avoid collecting huge files accidentally.
+
+### Planned
+
+- Add max file size limit
+- Skip files larger than configured size
+- Show skipped file count
+- Optionally print skipped file paths
+- Support human-readable size values
+
+### Example
+
+```bash
+harvcode --max-size 512KB
+harvcode --max-size 1MB
+harvcode --max-size 5MB
+```
+
+### Behavior
+
+Files larger than the limit should be skipped safely.
+
+```text
+Skipped large file: data/output.log
 ```
 
 ## Commit and Tag Release Convention
@@ -281,17 +236,17 @@ Commit messages should follow a lightweight Conventional Commits style.
 
 Common commit types:
 
-* `feat`: Add a new feature
-* `fix`: Fix a bug
-* `docs`: Update documentation only
-* `refactor`: Refactor code without changing behavior
-* `style`: Formatting or style-only changes
-* `test`: Add or update tests
-* `chore`: Maintenance tasks
-* `build`: Build system or dependency changes
-* `ci`: CI/CD workflow changes
-* `perf`: Performance improvements
-* `release`: Release-related changes
+- `feat`: Add a new feature
+- `fix`: Fix a bug
+- `docs`: Update documentation only
+- `refactor`: Refactor code without changing behavior
+- `style`: Formatting or style-only changes
+- `test`: Add or update tests
+- `chore`: Maintenance tasks
+- `build`: Build system or dependency changes
+- `ci`: CI/CD workflow changes
+- `perf`: Performance improvements
+- `release`: Release-related changes
 
 ### Commit Examples
 
@@ -306,11 +261,11 @@ git commit -m "release: prepare v0.3.0"
 
 ### Commit Guidelines
 
-* Use imperative mood where possible.
-* Keep the subject line short and clear.
-* Prefer one logical change per commit.
-* Use a scope when it improves clarity.
-* Avoid vague messages such as `update`, `fix stuff`, or `changes`.
+- Use imperative mood where possible.
+- Keep the subject line short and clear.
+- Prefer one logical change per commit.
+- Use a scope when it improves clarity.
+- Avoid vague messages such as `update`, `fix stuff`, or `changes`.
 
 ### Version Tag Convention
 
@@ -333,10 +288,10 @@ v1.0.0
 
 ### Versioning Rules
 
-* Increment `MAJOR` for breaking CLI or configuration changes.
-* Increment `MINOR` for new backward-compatible features.
-* Increment `PATCH` for backward-compatible bug fixes.
-* Pre-`v1.0.0` releases may still introduce breaking changes, but they should be documented clearly.
+- Increment `MAJOR` for breaking CLI or configuration changes.
+- Increment `MINOR` for new backward-compatible features.
+- Increment `PATCH` for backward-compatible bug fixes.
+- Pre-`v1.0.0` releases may still introduce breaking changes, but they should be documented clearly.
 
 ### Tagging Workflow
 
@@ -354,12 +309,12 @@ git push origin v0.3.0
 
 Before creating a release tag:
 
-* Ensure tests pass.
-* Update `ROADMAP.md` if milestone status changed.
-* Update documentation if CLI behavior changed.
-* Confirm the version shown by `harvcode --version`.
-* Use annotated tags for official releases.
-* Avoid moving or rewriting published release tags.
+- Ensure tests pass.
+- Update `ROADMAP.md` if milestone status changed.
+- Update documentation if CLI behavior changed.
+- Confirm the version shown by `harvcode --version`.
+- Use annotated tags for official releases.
+- Avoid moving or rewriting published release tags.
 
 ### Release Branch Policy
 
@@ -377,53 +332,42 @@ Prepare the first stable release.
 
 ### Goals
 
-* Stable command-line interface
-* Stable configuration format
-* Reliable Git integration
-* Reliable filtering behavior
-* Clear documentation
-* Cross-platform clipboard support
-* Good error messages
-* Minimal dependencies
-* Predictable output format
+- Stable command-line interface
+- Stable configuration format
+- Reliable Git integration
+- Reliable filtering behavior
+- Clear documentation
+- Cross-platform clipboard support
+- Good error messages
+- Minimal dependencies
+- Predictable output format
+- No required configuration file
+- No required Git integration
 
 ## Future Ideas
 
 These are not required for v1.0.0, but may be considered later.
 
-* Token estimation for AI context windows
-* Output templates
-* JSON output mode
-* XML output mode
-* Tree view summary
-* File ordering options
-* Language-aware formatting
-* Ignore file similar to `.harvcodeignore`
-* Shell completion scripts
-* Homebrew package
-* Cargo install release workflow
-
-## Priority Order
-
-Recommended implementation order:
-
-1. CLI help and version output
-2. Enhanced filtering
-3. Output system refactor
-4. File size limits
-5. Git integration
-6. Interactive picker improvements
-7. Configuration file
-8. Reporting and diagnostics
-9. Commit and tag release convention
-10. Stable v1.0.0 release
+- Token estimation for AI context windows
+- Output templates
+- JSON output mode
+- XML output mode
+- Tree view summary
+- File ordering options
+- Language-aware formatting
+- Integration git
+- Configuration File
+- Ignore file similar to `.harvcodeignore`
+- Shell completion scripts
+- Homebrew package
+- Cargo install release workflow
 
 ## Design Principles
 
-* Keep the tool simple
-* Prefer explicit CLI behavior
-* Avoid unnecessary dependencies
-* Make output predictable
-* Respect project ignore rules
-* Never silently include obviously unwanted files
-* Keep configuration optional
+- Keep the tool simple
+- Prefer explicit CLI behavior
+- Avoid unnecessary dependencies
+- Make output predictable
+- Respect project ignore rules
+- Never silently include obviously unwanted files
+- Keep configuration optional
