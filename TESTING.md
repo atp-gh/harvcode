@@ -214,50 +214,50 @@ Default clipboard behavior is tested at the argument-parsing level instead of th
 
 ## Test Coverage Summary
 
-| Area | Type | Verified Behavior |
-| ---- | ---- | ----------------- |
-| Argument parsing | Unit | No path defaults to current directory |
-| Argument parsing | Unit | No explicit output option defaults to clipboard |
-| Argument parsing | Unit | `--stdout` enables stdout output only |
-| Argument parsing | Unit | `--clipboard` enables explicit clipboard output |
-| Argument parsing | Unit | `--output <file>` parses file output |
-| Argument parsing | Unit | `--output=<file>` parses file output |
-| Argument parsing | Unit | Multiple output modes can be combined |
-| Argument parsing | Unit | Missing `--output` value returns an error |
-| Argument parsing | Unit | Empty `--output=` value returns an error |
-| Argument parsing | Unit | Unknown options return an error |
-| Argument parsing | Unit | Include extension values are parsed and normalized |
-| Argument parsing | Unit | Exclude extension values are parsed and normalized |
-| Argument parsing | Unit | Excluded directory names are parsed |
-| Argument parsing | Unit | Excluded file names are parsed |
-| File filtering | Unit | Hidden files are skipped |
-| File filtering | Unit | Hidden directories are skipped |
-| File filtering | Unit | Binary and archive extensions are skipped |
-| File filtering | Unit | Normal text files are accepted |
-| File filtering | Unit | Extensionless files are accepted by default |
-| File filtering | Unit | `--include-ext` only allows matching extensions |
-| File filtering | Unit | `--include-ext` excludes extensionless files |
-| File filtering | Unit | Default skipped extensions cannot be re-included |
-| File filtering | Unit | `--exclude-ext` rejects matching extensions |
-| File filtering | Unit | `--exclude-file` matches file names case-insensitively |
-| File filtering | Unit | `--exclude-dir` matches directory names case-insensitively |
-| Formatting | Unit | File content is wrapped in a Markdown code block |
-| Formatting | Unit | File path is included in the opening Markdown fence |
-| Formatting | Unit | Missing trailing newline is added before the closing fence |
-| Formatting | Unit | Existing trailing newline is handled correctly |
-| Formatting | Unit | Each formatted block ends with a blank line |
-| CLI behavior | Integration | `--stdout` prints collected files to stdout |
-| CLI behavior | Integration | Hidden files are not included in stdout output |
-| CLI behavior | Integration | Hidden directories are not traversed |
-| CLI behavior | Integration | Binary and archive extensions are skipped |
-| CLI behavior | Integration | `--output <file>` writes generated context to a file |
-| CLI behavior | Integration | `--stdout` and `--output` can be combined |
-| CLI behavior | Integration | `--include-ext` filters stdout output |
-| CLI behavior | Integration | `--exclude-ext` filters stdout output |
-| CLI behavior | Integration | `--exclude-dir` filters stdout output |
-| CLI behavior | Integration | `--exclude-file` filters stdout output |
-| CLI errors | Integration | Unknown options exit with code `1` |
-| CLI errors | Integration | Missing `--output` value exits with code `1` |
+| Area             | Type        | Verified Behavior                                          |
+| ---------------- | ----------- | ---------------------------------------------------------- |
+| Argument parsing | Unit        | No path defaults to current directory                      |
+| Argument parsing | Unit        | No explicit output option defaults to clipboard            |
+| Argument parsing | Unit        | `--stdout` enables stdout output only                      |
+| Argument parsing | Unit        | `--clipboard` enables explicit clipboard output            |
+| Argument parsing | Unit        | `--output <file>` parses file output                       |
+| Argument parsing | Unit        | `--output=<file>` parses file output                       |
+| Argument parsing | Unit        | Multiple output modes can be combined                      |
+| Argument parsing | Unit        | Missing `--output` value returns an error                  |
+| Argument parsing | Unit        | Empty `--output=` value returns an error                   |
+| Argument parsing | Unit        | Unknown options return an error                            |
+| Argument parsing | Unit        | Include extension values are parsed and normalized         |
+| Argument parsing | Unit        | Exclude extension values are parsed and normalized         |
+| Argument parsing | Unit        | Excluded directory names are parsed                        |
+| Argument parsing | Unit        | Excluded file names are parsed                             |
+| File filtering   | Unit        | Hidden files are skipped                                   |
+| File filtering   | Unit        | Hidden directories are skipped                             |
+| File filtering   | Unit        | Binary and archive extensions are skipped                  |
+| File filtering   | Unit        | Normal text files are accepted                             |
+| File filtering   | Unit        | Extensionless files are accepted by default                |
+| File filtering   | Unit        | `--include-ext` only allows matching extensions            |
+| File filtering   | Unit        | `--include-ext` excludes extensionless files               |
+| File filtering   | Unit        | Default skipped extensions cannot be re-included           |
+| File filtering   | Unit        | `--exclude-ext` rejects matching extensions                |
+| File filtering   | Unit        | `--exclude-file` matches file names case-insensitively     |
+| File filtering   | Unit        | `--exclude-dir` matches directory names case-insensitively |
+| Formatting       | Unit        | File content is wrapped in a Markdown code block           |
+| Formatting       | Unit        | File path is included in the opening Markdown fence        |
+| Formatting       | Unit        | Missing trailing newline is added before the closing fence |
+| Formatting       | Unit        | Existing trailing newline is handled correctly             |
+| Formatting       | Unit        | Each formatted block ends with a blank line                |
+| CLI behavior     | Integration | `--stdout` prints collected files to stdout                |
+| CLI behavior     | Integration | Hidden files are not included in stdout output             |
+| CLI behavior     | Integration | Hidden directories are not traversed                       |
+| CLI behavior     | Integration | Binary and archive extensions are skipped                  |
+| CLI behavior     | Integration | `--output <file>` writes generated context to a file       |
+| CLI behavior     | Integration | `--stdout` and `--output` can be combined                  |
+| CLI behavior     | Integration | `--include-ext` filters stdout output                      |
+| CLI behavior     | Integration | `--exclude-ext` filters stdout output                      |
+| CLI behavior     | Integration | `--exclude-dir` filters stdout output                      |
+| CLI behavior     | Integration | `--exclude-file` filters stdout output                     |
+| CLI errors       | Integration | Unknown options exit with code `1`                         |
+| CLI errors       | Integration | Missing `--output` value exits with code `1`               |
 
 ## Manual Clipboard Testing
 
@@ -285,10 +285,10 @@ If clipboard support is unavailable, install one of the supported clipboard comm
 
 ## Exit Codes Covered by Tests
 
-| Code | Meaning |
-| ---- | ------- |
-| `0` | Success |
-| `1` | CLI argument error |
+| Code | Meaning            |
+| ---- | ------------------ |
+| `0`  | Success            |
+| `1`  | CLI argument error |
 
 Other exit codes may exist in the application, but the current integration tests focus on stable argument and output behavior.
 
