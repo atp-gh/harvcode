@@ -290,16 +290,10 @@ Examples:
   harvcode src
   harvcode src/main.rs
   harvcode --pick
-  harvcode --picker fzf
-  harvcode --clipboard
   harvcode --stdout
   harvcode --output context.md
-  harvcode --stdout --output context.md
-  harvcode --clipboard --output context.md
   harvcode --include-ext rs,toml,md
-  harvcode --exclude-ext lock,json
   harvcode --exclude-dir target,node_modules
-  harvcode --exclude-file Cargo.lock
 
 Default:
   If no output option is specified, harvcode copies to clipboard.
