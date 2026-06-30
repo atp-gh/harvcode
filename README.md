@@ -91,13 +91,14 @@ You can build harvcode from source on any supported platform with a stable Rust 
 Clone the repository:
 
 ```bash
-git clone https://github.com/atp-gh/harvcode.gitcd harvcodeShow more lines
+git clone https://github.com/atp-gh/harvcode.git
+cd harvcode
 ```
 
 Build with Cargo:
 
-```
-cargo build --releaseShow more lines
+```bash
+cargo build --release
 ```
 
 The compiled binary will be available at `target/release/harvcode`.
