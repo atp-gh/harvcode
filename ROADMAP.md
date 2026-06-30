@@ -100,10 +100,10 @@ Improve interactive picker selection.
 
 ### Planned
 
-- [ ] Allow users to choose the picker
-- [ ] Define picker priority strategy
-- [ ] Improve behavior when no picker is installed
-- [ ] Keep `sk` and `fzf` support
+- [x] Allow users to choose the picker
+- [x] Define picker priority strategy
+- [x] Improve behavior when no picker is installed
+- [x] Keep `sk` and `fzf` support
 
 ### Picker Priority
 
