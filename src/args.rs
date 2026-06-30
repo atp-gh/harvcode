@@ -23,6 +23,8 @@ pub struct Config {
     pub picker: Option<PickerKind>,
     pub rules: Rules,
     pub output: OutputConfig,
+    pub quiet: bool,
+    pub verbose: bool,
 }
 
 /// Output behavior derived from CLI arguments.
@@ -75,6 +77,8 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     let mut roots = Vec::new();
     let mut rules = Rules::default();
     let mut output = OutputConfig::default();
+    let mut quiet = false;
+    let mut verbose = false;
 
     let mut i = 0;
 
@@ -105,6 +109,10 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
                 output.file = Some(PathBuf::from(value));
                 output.explicit = true;
             }
+
+            "--quiet" => quiet = true,
+
+            "--verbose" => verbose = true,
 
             "-h" | "--help" => {
                 print_help();
@@ -200,6 +208,8 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
         picker,
         rules,
         output,
+        quiet,
+        verbose,
     })
 }
 
@@ -261,6 +271,8 @@ Options:
   -V, --version                 Show version
       --pick                    Interactive selection (sk / fzf)
       --picker <sk|fzf>          Choose picker manually; implies --pick
+      --quiet                   Suppress non-error status output
+      --verbose                 Print execution report
 
 Output:
       --clipboard               Copy output to clipboard
@@ -500,5 +512,39 @@ mod tests {
         let result = parse_args(vec!["--picker=".to_string()]);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn parses_quiet() {
+        // `--quiet` should suppress non-error status output.
+        // It should not affect output mode selection.
+        let cfg = parse(&["--quiet"]);
+
+        assert!(cfg.quiet);
+        assert!(!cfg.verbose);
+        assert!(cfg.output.clipboard);
+        assert!(!cfg.output.explicit);
+    }
+
+    #[test]
+    fn parses_verbose() {
+        // `--verbose` should enable execution reporting.
+        // It should not affect output mode selection.
+        let cfg = parse(&["--verbose"]);
+
+        assert!(cfg.verbose);
+        assert!(!cfg.quiet);
+        assert!(cfg.output.clipboard);
+        assert!(!cfg.output.explicit);
+    }
+
+    #[test]
+    fn parses_quiet_and_verbose() {
+        // Both flags can be parsed together.
+        // Quiet mode is handled as higher priority in main.rs.
+        let cfg = parse(&["--quiet", "--verbose"]);
+
+        assert!(cfg.quiet);
+        assert!(cfg.verbose);
     }
 }

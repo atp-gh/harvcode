@@ -3,6 +3,7 @@ mod clipboard;
 mod filter;
 mod formatter;
 mod picker;
+mod report;
 mod walker;
 
 use std::env;
@@ -11,6 +12,7 @@ use std::path::PathBuf;
 use std::process;
 
 use args::Config;
+use report::ClipboardStatus;
 
 /// Expand input roots into a flat list of files.
 ///
@@ -76,6 +78,7 @@ fn write_stdout(output: &str) -> io::Result<()> {
 /// 3. Filter and read file contents
 /// 4. Format as Markdown code blocks
 /// 5. Write output to selected destinations
+/// 6. Optionally print execution report
 ///
 /// Output behavior:
 /// - No explicit output flags: copy to clipboard
@@ -102,19 +105,28 @@ fn main() {
         }
     };
 
+    let mut report = report::Report::new();
+
     // Pre-allocate output buffer with 1MB initial capacity.
     let mut output = String::with_capacity(1024 * 1024);
 
     // Read, filter, and format files.
     for path in files {
         if !filter::is_valid(&path, &cfg.rules) {
+            report.skip_file();
             continue;
         }
 
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            output.push_str(&formatter::format(&path, &content));
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                report.collect_file();
+                output.push_str(&formatter::format(&path, &content));
+            }
+            Err(_) => report.skip_file(),
         }
     }
+
+    report.set_output_size(output.len());
 
     let mut output_failed = false;
 
@@ -123,6 +135,8 @@ fn main() {
         if let Err(err) = write_stdout(&output) {
             eprintln!("Failed to write to stdout: {}", err);
             output_failed = true;
+        } else {
+            report.add_destination("stdout");
         }
     }
 
@@ -130,7 +144,11 @@ fn main() {
     if let Some(path) = &cfg.output.file {
         match std::fs::write(path, &output) {
             Ok(_) => {
-                eprintln!("Wrote output to {}", path.display());
+                report.add_destination(format!("file: {}", path.display()));
+
+                if !cfg.quiet {
+                    eprintln!("Wrote output to {}", path.display());
+                }
             }
             Err(err) => {
                 eprintln!("Failed to write output file {}: {}", path.display(), err);
@@ -142,22 +160,36 @@ fn main() {
     // Clipboard output.
     if cfg.output.clipboard {
         if clipboard::copy(&output) {
-            eprintln!("Copied to clipboard");
+            report.set_clipboard(ClipboardStatus::Success);
+            report.add_destination("clipboard");
+
+            if !cfg.quiet {
+                eprintln!("Copied to clipboard");
+            }
         } else if cfg.output.explicit {
             // Explicit `--clipboard` should fail loudly.
+            report.set_clipboard(ClipboardStatus::Failed);
             eprintln!("Failed to copy to clipboard");
             output_failed = true;
         } else {
             // Backward-compatible default behavior:
             // no output flag means clipboard-first, stdout fallback.
-            eprintln!("Clipboard unavailable; writing output to stdout");
+            report.set_clipboard(ClipboardStatus::Failed);
+
+            if !cfg.quiet {
+                eprintln!("Clipboard unavailable; writing output to stdout");
+            }
 
             if let Err(err) = write_stdout(&output) {
                 eprintln!("Failed to write fallback output to stdout: {}", err);
                 output_failed = true;
+            } else {
+                report.add_destination("stdout (clipboard fallback)");
             }
         }
     }
+
+    report.print_if_enabled(&cfg);
 
     if output_failed {
         process::exit(3);

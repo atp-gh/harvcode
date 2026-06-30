@@ -132,13 +132,13 @@ harvcode --pick --picker sk
 
 ### Planned
 
-- [ ] Report collected file count
-- [ ] Report skipped file count
-- [ ] Report total output size
-- [ ] Report output destination
-- [ ] Report clipboard success or failure
-- [ ] Add `--quiet`
-- [ ] Add `--verbose`
+- [x] Report collected file count
+- [x] Report skipped file count
+- [x] Report total output size
+- [x] Report output destination
+- [x] Report clipboard success or failure
+- [x] Add `--quiet`
+- [x] Add `--verbose`
 
 ### Example
 
