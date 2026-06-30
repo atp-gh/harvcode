@@ -120,6 +120,8 @@ Options:
   -V, --version                 Show version
       --pick                    Interactive selection (sk / fzf)
       --picker <sk|fzf>          Choose picker manually; implies --pick
+      --quiet                   Suppress non-error status output
+      --verbose                 Print execution report
 
 Output:
       --clipboard               Copy output to clipboard
