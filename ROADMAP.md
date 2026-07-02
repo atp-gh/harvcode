@@ -190,33 +190,24 @@ src/cli.rs
 src/output.rs
 ```
 
-## v0.6.0 - File Size Limits
+## v0.6.0 - Secure
 
-Avoid collecting huge files accidentally.
+Focus on hardening harvcode for safer use on local and untrusted repositories.
 
 ### Planned
 
-- Add max file size limit
-- Skip files larger than configured size
-- Show skipped file count
-- Optionally print skipped file paths
-- Support human-readable size values
-
-### Example
-
-```bash
-harvcode --max-size 512KB
-harvcode --max-size 1MB
-harvcode --max-size 5MB
-```
-
-### Behavior
-
-Files larger than the limit should be skipped safely.
-
-```text
-Skipped large file: data/output.log
-```
+- [x] Prevent symlink traversal when collecting files
+- [x] Add tests for symlinked files, symlinked directories, and symlink roots
+- [ ] Apply root filtering consistently for hidden and excluded directories
+- [ ] Add maximum per-file output size limits
+- [ ] Add maximum total output size limits
+- [ ] Prevent Markdown code fence injection
+- [ ] Sanitize file path labels in formatted output
+- [ ] Escape unsafe terminal control characters in displayed paths
+- [ ] Add default exclusions for common secret-related filenames
+- [ ] Consider optional secret detection and redaction
+- [ ] Add timeout handling for clipboard and picker subprocesses
+- [ ] Improve verbose skip reporting with clear skip reasons
 
 ## Commit and Tag Release Convention
 
