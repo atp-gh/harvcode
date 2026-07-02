@@ -14,6 +14,7 @@ The test suite is designed to verify:
 - File filtering rules
 - Markdown output formatting
 - Deterministic output behavior
+- File listing mode behavior at the argument-parsing level
 - CLI error handling
 
 The tests focus on behavior that can be reliably verified across local machines, CI environments, containers, and different operating systems.
@@ -98,9 +99,47 @@ Covered behavior includes:
 - Explicit clipboard output
 - File output
 - Combined output modes
+- List mode parsing
+- List mode disabling implicit clipboard output
+- List mode preserving explicitly parsed output flags
 - Invalid flags
 - Missing flag values
 - Include and exclude filter parsing
+- Picker backend parsing
+- Quiet and verbose mode parsing
+
+### File Listing Mode
+
+File listing mode is enabled with:
+
+```bash
+harvcode --list
+```
+
+At the argument-parsing level, tests verify that:
+
+- `--list` enables list mode
+- `--list` does not enable the default implicit clipboard output
+- Explicit output flags are still recorded by the parser when combined with `--list`
+- Runtime behavior in `main.rs` is responsible for making list mode override clipboard, stdout, and file output behavior
+
+This keeps parser tests focused on parsing rather than full application execution.
+
+The runtime behavior of list mode is implemented in:
+
+```text
+src/list.rs
+```
+
+List mode is designed to:
+
+- Print only file paths
+- Print one valid path per line
+- Apply existing file filters
+- Use stable path ordering
+- Avoid reading file contents
+- Avoid copying to the clipboard
+- Avoid writing to output files
 
 ### File Filtering
 
@@ -186,21 +225,23 @@ Because of this, direct clipboard behavior is not tested through integration tes
 Instead:
 
 - Unit tests verify that the default output mode is clipboard.
+- Unit tests verify that `--list` disables implicit clipboard output.
 - Integration tests use deterministic output modes such as `--stdout` and `--output`.
 
 This keeps the test suite stable and portable.
 
 ## Output Mode Testing Strategy
 
-harvcode has three output modes:
+harvcode supports these output-related modes:
 
 ```bash
 harvcode --clipboard
 harvcode --stdout
 harvcode --output context.md
+harvcode --list
 ```
 
-The test suite focuses mainly on:
+The test suite focuses mainly on deterministic modes:
 
 ```bash
 harvcode --stdout
@@ -211,6 +252,17 @@ harvcode --stdout --output context.md
 These modes are deterministic because they do not require external clipboard commands.
 
 Default clipboard behavior is tested at the argument-parsing level instead of through direct system clipboard integration.
+
+List mode is also tested at the argument-parsing level. The parser records `--list` and ensures that implicit clipboard output is not enabled when list mode is used.
+
+Runtime list behavior can be verified manually with commands such as:
+
+```bash
+harvcode --list
+harvcode src --list
+harvcode --include-ext rs,md --list
+harvcode --exclude-dir target,node_modules --list
+```
 
 ## Test Coverage Summary
 
@@ -223,6 +275,10 @@ Default clipboard behavior is tested at the argument-parsing level instead of th
 | Argument parsing | Unit        | `--output <file>` parses file output                       |
 | Argument parsing | Unit        | `--output=<file>` parses file output                       |
 | Argument parsing | Unit        | Multiple output modes can be combined                      |
+| Argument parsing | Unit        | `--list` enables list mode                                 |
+| Argument parsing | Unit        | `--list` disables implicit clipboard output                |
+| Argument parsing | Unit        | `--list` preserves explicitly parsed output flags          |
+| Argument parsing | Unit        | `--list --clipboard` keeps explicit clipboard in parser    |
 | Argument parsing | Unit        | Missing `--output` value returns an error                  |
 | Argument parsing | Unit        | Empty `--output=` value returns an error                   |
 | Argument parsing | Unit        | Unknown options return an error                            |
@@ -230,6 +286,14 @@ Default clipboard behavior is tested at the argument-parsing level instead of th
 | Argument parsing | Unit        | Exclude extension values are parsed and normalized         |
 | Argument parsing | Unit        | Excluded directory names are parsed                        |
 | Argument parsing | Unit        | Excluded file names are parsed                             |
+| Argument parsing | Unit        | `--picker fzf` enables picker mode                         |
+| Argument parsing | Unit        | `--picker sk` enables picker mode                          |
+| Argument parsing | Unit        | `--picker=<value>` syntax is supported                     |
+| Argument parsing | Unit        | Unknown picker backends return an error                    |
+| Argument parsing | Unit        | Empty picker values return an error                        |
+| Argument parsing | Unit        | `--quiet` is parsed                                        |
+| Argument parsing | Unit        | `--verbose` is parsed                                      |
+| Argument parsing | Unit        | `--quiet` and `--verbose` can be parsed together           |
 | File filtering   | Unit        | Hidden files are skipped                                   |
 | File filtering   | Unit        | Hidden directories are skipped                             |
 | File filtering   | Unit        | Binary and archive extensions are skipped                  |
@@ -258,6 +322,54 @@ Default clipboard behavior is tested at the argument-parsing level instead of th
 | CLI behavior     | Integration | `--exclude-file` filters stdout output                     |
 | CLI errors       | Integration | Unknown options exit with code `1`                         |
 | CLI errors       | Integration | Missing `--output` value exits with code `1`               |
+
+## Manual List Mode Testing
+
+List mode can be checked manually.
+
+Basic list mode:
+
+```bash
+harvcode --list
+```
+
+List files under a specific directory:
+
+```bash
+harvcode src --list
+```
+
+List only selected extensions:
+
+```bash
+harvcode --include-ext rs,md --list
+```
+
+List while excluding generated directories:
+
+```bash
+harvcode --exclude-dir target,node_modules --list
+```
+
+List mode should:
+
+- Print file paths only
+- Print one path per line
+- Not print file contents
+- Not copy anything to the clipboard
+- Not write to files passed through `--output`
+- Respect all existing filters
+- Use stable path ordering
+
+These commands are useful for verifying the behavior:
+
+```bash
+harvcode --list --output context.md
+harvcode --list --clipboard
+harvcode --list --stdout
+```
+
+In all cases, list mode should write only the file list to stdout.
 
 ## Manual Clipboard Testing
 
@@ -297,5 +409,15 @@ Other exit codes may exist in the application, but the current integration tests
 The test suite prioritizes reproducibility.
 
 Clipboard integration is part of harvcode's runtime behavior, but it is intentionally not covered by direct integration tests because it depends on external commands and platform-specific environments.
+
+List mode is deterministic and could be covered by integration tests in the future. If stronger automated coverage is desired, useful integration tests would include:
+
+- `--list` prints file paths only
+- `--list` does not print file contents
+- `--list` respects `--include-ext`
+- `--list` respects `--exclude-dir`
+- `--list --output context.md` does not write `context.md`
+- `--list --clipboard` does not require clipboard tools
+- `--list` output is sorted deterministically
 
 If clipboard behavior needs stronger automated coverage in the future, the clipboard layer should first be refactored into a mockable abstraction.
