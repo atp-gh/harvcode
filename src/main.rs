@@ -15,6 +15,20 @@ use std::process;
 use args::Config;
 use report::ClipboardStatus;
 
+/// Return true only for regular files without following symbolic links.
+fn is_regular_file_no_symlink(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_file())
+        .unwrap_or(false)
+}
+
+/// Return true only for directories without following symbolic links.
+fn is_dir_no_symlink(path: &std::path::Path) -> bool {
+    std::fs::symlink_metadata(path)
+        .map(|meta| meta.file_type().is_dir())
+        .unwrap_or(false)
+}
+
 /// Expand input roots into a flat list of files.
 ///
 /// Rules:
@@ -24,9 +38,19 @@ fn expand_roots(cfg: &Config) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
     for root in &cfg.roots {
-        if root.is_file() {
+        // Never follow symlink roots.
+        //
+        // Without this check, a user or malicious repository could pass or contain:
+        //   linked-src -> /home/user/private-project
+        //
+        // and Path::is_file()/is_dir() would follow it.
+        if is_regular_file_no_symlink(root) {
             files.push(root.clone());
-        } else if root.is_dir() {
+        } else if is_dir_no_symlink(root) {
+            if filter::should_skip_dir(root, &cfg.rules) {
+                continue;
+            }
+
             files.extend(walker::collect(root, &cfg.rules));
         }
     }
@@ -131,6 +155,15 @@ fn main() {
             continue;
         }
 
+        // Re-check before reading.
+        //
+        // This avoids reading a path that was replaced by a symlink after traversal
+        // but before read_to_string.
+        if !is_regular_file_no_symlink(&path) {
+            report.skip_file();
+            continue;
+        }
+
         match std::fs::read_to_string(&path) {
             Ok(content) => {
                 report.collect_file();
@@ -207,5 +240,91 @@ fn main() {
 
     if output_failed {
         process::exit(3);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::args::{OutputConfig, PickerKind};
+    use crate::filter::Rules;
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+
+        let dir = std::env::temp_dir().join(format!("harvcode-main-test-{}-{}", name, unique));
+
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn test_config_with_roots(roots: Vec<PathBuf>) -> Config {
+        Config {
+            roots,
+            pick: false,
+            picker: None::<PickerKind>,
+            rules: Rules::default(),
+            output: OutputConfig::default(),
+            quiet: false,
+            verbose: false,
+            list: false,
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn expand_roots_does_not_follow_symlinked_file_root() {
+        use std::os::unix::fs::symlink;
+
+        let base = temp_test_dir("root-symlink-file");
+        let outside = base.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+
+        let secret = outside.join("secret.rs");
+        fs::write(&secret, "secret").unwrap();
+
+        let link = base.join("linked-secret.rs");
+        symlink(&secret, &link).unwrap();
+
+        let cfg = test_config_with_roots(vec![link]);
+        let files = expand_roots(&cfg);
+
+        assert!(
+            files.is_empty(),
+            "explicit symlink file roots should not be collected"
+        );
+
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn expand_roots_does_not_follow_symlinked_directory_root() {
+        use std::os::unix::fs::symlink;
+
+        let base = temp_test_dir("root-symlink-dir");
+        let outside = base.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+
+        let secret = outside.join("secret.rs");
+        fs::write(&secret, "secret").unwrap();
+
+        let link = base.join("linked-outside");
+        symlink(&outside, &link).unwrap();
+
+        let cfg = test_config_with_roots(vec![link]);
+        let files = expand_roots(&cfg);
+
+        assert!(
+            files.is_empty(),
+            "explicit symlink directory roots should not be traversed"
+        );
+
+        let _ = fs::remove_dir_all(base);
     }
 }
