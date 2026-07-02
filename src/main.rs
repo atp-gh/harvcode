@@ -2,6 +2,7 @@ mod args;
 mod clipboard;
 mod filter;
 mod formatter;
+mod list;
 mod picker;
 mod report;
 mod walker;
@@ -75,10 +76,11 @@ fn write_stdout(output: &str) -> io::Result<()> {
 /// Flow:
 /// 1. Parse CLI arguments → `Config`
 /// 2. Resolve target files
-/// 3. Filter and read file contents
-/// 4. Format as Markdown code blocks
-/// 5. Write output to selected destinations
-/// 6. Optionally print execution report
+/// 3. If `--list` is enabled, print the final file list and exit
+/// 4. Filter and read file contents
+/// 5. Format as Markdown code blocks
+/// 6. Write output to selected destinations
+/// 7. Optionally print execution report
 ///
 /// Output behavior:
 /// - No explicit output flags: copy to clipboard
@@ -86,6 +88,7 @@ fn write_stdout(output: &str) -> io::Result<()> {
 /// - `--stdout`: write to stdout
 /// - `--output <file>`: write to file
 /// - Output modes can be combined
+/// - `--list`: write the final file list to stdout and ignore other output modes
 fn main() {
     // Collect CLI args and skip program name.
     let args: Vec<String> = env::args().skip(1).collect();
@@ -106,6 +109,17 @@ fn main() {
     };
 
     let mut report = report::Report::new();
+
+    if cfg.list {
+        if let Err(err) = list::run(files, &cfg, &mut report) {
+            eprintln!("Failed to write file list to stdout: {}", err);
+            report.print_if_enabled(&cfg);
+            process::exit(3);
+        }
+
+        report.print_if_enabled(&cfg);
+        return;
+    }
 
     // Pre-allocate output buffer with 1MB initial capacity.
     let mut output = String::with_capacity(1024 * 1024);

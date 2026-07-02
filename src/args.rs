@@ -17,6 +17,9 @@ pub enum PickerKind {
 /// - `picker`: selected picker backend
 /// - `rules`: file filtering rules
 /// - `output`: output behavior
+/// - `quiet`: suppress non-error status output
+/// - `verbose`: print execution report
+/// - `list`: print the final file list instead of file contents
 pub struct Config {
     pub roots: Vec<PathBuf>,
     pub pick: bool,
@@ -25,6 +28,7 @@ pub struct Config {
     pub output: OutputConfig,
     pub quiet: bool,
     pub verbose: bool,
+    pub list: bool,
 }
 
 /// Output behavior derived from CLI arguments.
@@ -60,6 +64,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// - `--stdout`
 /// - `--output context.md`
 /// - `--output=context.md`
+/// - `--list`
 /// - `--include-ext rs,toml,md`
 /// - `--include-ext=rs,toml,md`
 /// - `--exclude-ext lock,json`
@@ -70,7 +75,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// - Treats non-flag arguments as file/directory paths
 /// - Returns error on unknown flags or missing values
 /// - Defaults to current directory if no paths provided
-/// - Defaults to clipboard output if no output mode is specified
+/// - Defaults to clipboard output if no output mode is specified and list mode is disabled
 pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     let mut pick = false;
     let mut picker = None;
@@ -79,6 +84,7 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     let mut output = OutputConfig::default();
     let mut quiet = false;
     let mut verbose = false;
+    let mut list = false;
 
     let mut i = 0;
 
@@ -113,6 +119,8 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
             "--quiet" => quiet = true,
 
             "--verbose" => verbose = true,
+
+            "--list" => list = true,
 
             "-h" | "--help" => {
                 print_help();
@@ -198,7 +206,7 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
 
     // v0.4.0 default behavior:
     // If no output mode is specified, keep the old clipboard-first behavior.
-    if !output.explicit {
+    if !output.explicit && !list {
         output.clipboard = true;
     }
 
@@ -210,6 +218,7 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
         output,
         quiet,
         verbose,
+        list,
     })
 }
 
@@ -270,7 +279,8 @@ Options:
   -h, --help                    Show help
   -V, --version                 Show version
       --pick                    Interactive selection (sk / fzf)
-      --picker <sk|fzf>          Choose picker manually; implies --pick
+      --picker <sk|fzf>         Choose picker manually; implies --pick
+      --list                    List collected file paths only
       --quiet                   Suppress non-error status output
       --verbose                 Print execution report
 
@@ -297,6 +307,7 @@ Examples:
 
 Default:
   If no output option is specified, harvcode copies to clipboard.
+  In --list mode, harvcode always writes the file list to stdout.
 "#,
         version = VERSION
     );
@@ -540,5 +551,41 @@ mod tests {
 
         assert!(cfg.quiet);
         assert!(cfg.verbose);
+    }
+
+    #[test]
+    fn parses_list_mode() {
+        // `--list` enables listing mode.
+        // In list mode, harvcode should not default to clipboard output.
+        let cfg = parse(&["--list"]);
+
+        assert!(cfg.list);
+        assert!(!cfg.output.clipboard);
+        assert!(!cfg.output.stdout);
+        assert!(cfg.output.file.is_none());
+        assert!(!cfg.output.explicit);
+    }
+
+    #[test]
+    fn list_mode_does_not_disable_explicit_output_flags_in_parser() {
+        // Parser records explicit output flags even with --list.
+        // main.rs is responsible for making list mode override actual output behavior.
+        let cfg = parse(&["--list", "--stdout", "--output", "context.md"]);
+
+        assert!(cfg.list);
+        assert!(cfg.output.stdout);
+        assert_eq!(cfg.output.file, Some(PathBuf::from("context.md")));
+        assert!(cfg.output.explicit);
+    }
+
+    #[test]
+    fn list_mode_keeps_explicit_clipboard_in_parser() {
+        // Parser records explicit --clipboard even with --list.
+        // main.rs is responsible for making list mode override actual output behavior.
+        let cfg = parse(&["--list", "--clipboard"]);
+
+        assert!(cfg.list);
+        assert!(cfg.output.clipboard);
+        assert!(cfg.output.explicit);
     }
 }

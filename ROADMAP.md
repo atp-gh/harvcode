@@ -162,14 +162,14 @@ Add a simple listing mode to preview which files would be collected.
 
 ### Planned
 
-- [ ] Add `--list`
-- [ ] Print only collected file paths
-- [ ] Do not output file contents in list mode
-- [ ] Do not copy to clipboard in list mode
-- [ ] Do not write to output file in list mode
-- [ ] Respect all existing filters
-- [ ] Respect excluded binary/archive files
-- [ ] Use stable path ordering
+- [x] Add `--list`
+- [x] Print only collected file paths
+- [x] Do not output file contents in list mode
+- [x] Do not copy to clipboard in list mode
+- [x] Do not write to output file in list mode
+- [x] Respect all existing filters
+- [x] Respect excluded binary/archive files
+- [x] Use stable path ordering
 
 ### Example
 
