@@ -119,20 +119,21 @@ Options:
   -h, --help                    Show help
   -V, --version                 Show version
       --pick                    Interactive selection (sk / fzf)
-      --picker <sk|fzf>          Choose picker manually; implies --pick
+      --picker <sk|fzf>         Choose picker manually; implies --pick
+      --list                    List collected file paths only
       --quiet                   Suppress non-error status output
       --verbose                 Print execution report
 
 Output:
       --clipboard               Copy output to clipboard
       --stdout                  Write output to stdout
-      --output <file>            Write output to file
+      --output <file>           Write output to file
 
 Filtering:
-      --include-ext <list>       Include only extensions, e.g. rs,toml,md
-      --exclude-ext <list>       Exclude extensions, e.g. lock,json
-      --exclude-dir <list>       Exclude directories, e.g. target,node_modules
-      --exclude-file <list>      Exclude files, e.g. Cargo.lock
+      --include-ext <list>      Include only extensions, e.g. rs,toml,md
+      --exclude-ext <list>      Exclude extensions, e.g. lock,json
+      --exclude-dir <list>      Exclude directories, e.g. target,node_modules
+      --exclude-file <list>     Exclude files, e.g. Cargo.lock
 ```
 
 ## Exit Codes
@@ -154,5 +155,7 @@ src/
 ├── filter.rs      # File filtering rules
 ├── formatter.rs   # Markdown output formatting
 ├── clipboard.rs   # Clipboard integration
-└── picker.rs      # Interactive file selection
+├── picker.rs      # Interactive file selection
+├── report.rs      # Execution reporting
+└── list.rs        # File listing mode
 ```
