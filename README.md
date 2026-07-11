@@ -55,6 +55,12 @@ If both are installed, harvcode prefers: `sk > fzf`
 
 ## Installation
 
+### Cargo
+
+```bash
+cargo install harvcode
+```
+
 ### Linux x86_64 prebuilt binary
 
 For Linux x86_64, you can install the prebuilt `musl` binary manually:
