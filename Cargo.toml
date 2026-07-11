@@ -3,6 +3,14 @@ name = "harvcode"
 version = "0.5.1"
 edition = "2021"
 
+authors = ["atp"]
+license = "MIT"
+description = "A fast Rust tool for harvesting source files as Markdown and copying them to your clipboard."
+repository = "https://github.com/atp-gh/harvcode"
+homepage = "https://github.com/atp-gh/harvcode"
+readme = "README.md"
+keywords = ["cli", "clipboard", "markdown", "source-code", "developer-tools"]
+categories = ["command-line-utilities", "development-tools"]
 
 [profile.release]
 opt-level = "z"
