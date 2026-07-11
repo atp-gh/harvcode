@@ -67,11 +67,11 @@ For Linux x86_64, you can install the prebuilt `musl` binary manually:
 
 ```bash
 curl -L \
-  https://github.com/atp-gh/harvcode/releases/download/v0.5.1/harvcode-v0.5.1-x86_64-unknown-linux-musl.tar.gz \
-  -o harvcode-v0.5.1-x86_64-unknown-linux-musl.tar.gz
-tar -xzf harvcode-v0.5.1-x86_64-unknown-linux-musl.tar.gz
-chmod +x harvcode-v0.5.1-x86_64-unknown-linux-musl/harvcode
-sudo mv harvcode-v0.5.1-x86_64-unknown-linux-musl/harvcode /usr/local/bin/harvcode
+  https://github.com/atp-gh/harvcode/releases/download/v0.5.2/harvcode-v0.5.2-x86_64-unknown-linux-musl.tar.gz \
+  -o harvcode-v0.5.2-x86_64-unknown-linux-musl.tar.gz
+tar -xzf harvcode-v0.5.2-x86_64-unknown-linux-musl.tar.gz
+chmod +x harvcode-v0.5.2-x86_64-unknown-linux-musl/harvcode
+sudo mv harvcode-v0.5.2-x86_64-unknown-linux-musl/harvcode /usr/local/bin/harvcode
 
 
 # Verify the installation:
