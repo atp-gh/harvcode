@@ -1,17 +1,12 @@
 use crate::args::Config;
 
 /// Clipboard reporting state.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub enum ClipboardStatus {
+    #[default]
     NotRequested,
     Success,
     Failed,
-}
-
-impl Default for ClipboardStatus {
-    fn default() -> Self {
-        Self::NotRequested
-    }
 }
 
 /// Execution report for verbose output.
