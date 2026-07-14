@@ -44,6 +44,24 @@ harvcode uses one of the following clipboard commands when clipboard output is e
 - `pbcopy` for macos
 - `clip` for windows
 
+> [!NOTE]
+> **Windows clipboard encoding**
+>
+> If text copied by harvcode appears garbled on Windows, this is because the
+> Windows `clip` command may not handle UTF-8 text correctly.
+>
+> To resolve this issue, enable Windows UTF-8 globalization support:
+>
+> 1. Open **Settings**.
+> 2. Go to **Time & language** → **Language & region**.
+> 3. Open **Administrative language settings**.
+> 4. Click **Change system locale...**.
+> 5. Enable **Beta: Use Unicode UTF-8 for worldwide language support**.
+> 6. Restart Windows for the change to take effect.
+>
+> This Windows option is marked as a beta feature. Enable it only if it is
+> compatible with the other applications you use.
+
 ### Optional picker support
 
 Interactive mode requires one of:
