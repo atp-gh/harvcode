@@ -3,82 +3,90 @@ use std::process::{Command, Stdio};
 
 use crate::args::PickerKind;
 
-/// Check if a command exists in PATH
-fn exists(cmd: &str) -> bool {
-    Command::new("which")
-        .arg(cmd)
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
+/// Return the picker commands that should be attempted.
+///
+/// The returned slice contains static command definitions, so selecting a
+/// picker does not require allocating a temporary `Vec`.
+///
+/// Behavior:
+/// - An explicitly selected picker produces exactly one candidate.
+/// - Automatic selection tries `sk` first, followed by `fzf`.
+fn picker_commands(
+    picker: Option<PickerKind>,
+) -> &'static [(&'static str, &'static [&'static str])] {
+    const SK: &[(&str, &[&str])] = &[("sk", &["-m"])];
+    const FZF: &[(&str, &[&str])] = &[("fzf", &["-m"])];
+    const AUTO: &[(&str, &[&str])] = &[("sk", &["-m"]), ("fzf", &["-m"])];
 
-/// Select available fuzzy finder
-/// Priority: sk > fzf
-fn picker_cmd(picker: Option<PickerKind>) -> Option<Vec<&'static str>> {
     match picker {
-        Some(PickerKind::Sk) => {
-            if exists("sk") {
-                Some(vec!["sk", "-m"])
-            } else {
-                None
-            }
-        }
-        Some(PickerKind::Fzf) => {
-            if exists("fzf") {
-                Some(vec!["fzf", "-m"])
-            } else {
-                None
-            }
-        }
-        None => {
-            if exists("sk") {
-                Some(vec!["sk", "-m"])
-            } else if exists("fzf") {
-                Some(vec!["fzf", "-m"])
-            } else {
-                None
-            }
-        }
+        Some(PickerKind::Sk) => SK,
+        Some(PickerKind::Fzf) => FZF,
+        None => AUTO,
     }
 }
 
-/// Run interactive selection
-/// Input: newline-separated file paths
-/// Output: selected file paths
+/// Run an interactive fuzzy finder and return the selected file paths.
+///
+/// The input must contain newline-separated file paths. Each selected path is
+/// returned as an individual `String`.
+///
+/// Instead of using `which` to check whether a picker is installed, this
+/// function directly attempts to spawn each candidate command. A failed spawn
+/// indicates that the command is unavailable or could not be started, allowing
+/// automatic selection to continue with the next candidate.
+///
+/// Returns `None` when:
+/// - No picker command can be started.
+/// - The picker exits unsuccessfully or is cancelled.
+/// - Writing the file list to the picker fails.
+/// - Reading the picker output fails.
+/// - The picker returns no selected files.
 pub fn pick(input: &str, picker: Option<PickerKind>) -> Option<Vec<String>> {
-    let cmd = picker_cmd(picker)?;
+    for &(program, args) in picker_commands(picker) {
+        // Try starting the picker directly. This avoids launching a separate
+        // `which` process before launching the actual picker.
+        let mut child = match Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
 
-    let mut child = Command::new(cmd[0])
-        .args(&cmd[1..])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .spawn()
-        .ok()?;
+            // In automatic mode, continue to the next candidate when the
+            // current picker is unavailable or cannot be started.
+            Err(_) => continue,
+        };
 
-    // Feed file list into picker
-    if let Some(mut stdin) = child.stdin.take() {
+        // Send the newline-separated file list to the picker's standard input.
+        //
+        // Taking ownership of stdin allows it to be explicitly dropped after
+        // writing, which sends EOF so the picker can finish processing input.
+        let mut stdin = child.stdin.take()?;
         stdin.write_all(input.as_bytes()).ok()?;
+        drop(stdin);
+
+        // Wait for the picker to exit and collect its standard output.
+        let output = child.wait_with_output().ok()?;
+
+        // A non-zero status normally means that selection was cancelled or
+        // the picker encountered an error.
+        if !output.status.success() {
+            return None;
+        }
+
+        // Convert each non-empty output line into one selected file path.
+        let files: Vec<String> = String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(str::to_owned)
+            .collect();
+
+        // An empty result is treated as a cancelled selection.
+        return (!files.is_empty()).then_some(files);
     }
 
-    let output = child.wait_with_output().ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let result = String::from_utf8_lossy(&output.stdout);
-
-    let files = result
-        .lines()
-        .map(|l| l.trim().to_string())
-        .filter(|l| !l.is_empty())
-        .collect::<Vec<_>>();
-
-    if files.is_empty() {
-        None
-    } else {
-        Some(files)
-    }
+    // None of the configured picker commands could be started.
+    None
 }
