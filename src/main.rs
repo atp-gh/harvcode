@@ -167,7 +167,7 @@ fn main() {
         match std::fs::read_to_string(&path) {
             Ok(content) => {
                 report.collect_file();
-                output.push_str(&formatter::format(&path, &content));
+                formatter::append(&mut output, &path, &content);
             }
             Err(_) => report.skip_file(),
         }

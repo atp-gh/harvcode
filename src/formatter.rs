@@ -1,76 +1,115 @@
 use std::path::Path;
 
-/// Format file content into Markdown-style code block
-/// Includes relative file path as language/tag
-pub fn format(path: &Path, content: &str) -> String {
-    let rel = path.strip_prefix(".").unwrap_or(path);
+/// Append file content to an existing output buffer as a Markdown code block.
+///
+/// Writing directly into the caller-provided `String` avoids allocating a
+/// temporary `String` for every file. This is especially useful when many
+/// files are processed and appended to one final output buffer.
+///
+/// The opening Markdown fence includes the relative file path:
+///
+/// ```src/main.rs
+/// fn main() {}
+/// ```
+///
+/// A trailing newline is inserted before the closing fence when the original
+/// content does not already end with one. Each code block also ends with one
+/// blank line so multiple blocks remain visually separated.
+pub fn append(output: &mut String, path: &Path, content: &str) {
+    // Remove a leading "." component when possible so paths such as
+    // "./src/main.rs" are displayed as "src/main.rs".
+    let relative_path = path.strip_prefix(".").unwrap_or(path);
 
-    let mut s = String::new();
+    // Write directly into the final output buffer instead of creating an
+    // intermediate String and copying it into the final buffer afterward.
+    output.push_str("```");
+    output.push_str(&relative_path.to_string_lossy());
+    output.push('\n');
 
-    s.push_str("```");
-    s.push_str(&rel.to_string_lossy());
-    s.push('\n');
+    // Append the file content without modifying it.
+    output.push_str(content);
 
-    s.push_str(content);
-
+    // Ensure the closing Markdown fence starts on its own line.
     if !content.ends_with('\n') {
-        s.push('\n');
+        output.push('\n');
     }
 
-    s.push_str("```\n\n");
-
-    s
+    // Add a blank line after the block to separate it from the next file.
+    output.push_str("```\n\n");
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// Format one file into a newly created buffer for concise test setup.
+    ///
+    /// Production code reuses a shared output buffer, while this helper keeps
+    /// individual tests focused on the resulting Markdown.
+    fn format(path: &Path, content: &str) -> String {
+        let mut output = String::new();
+        append(&mut output, path, content);
+        output
+    }
+
     #[test]
     fn formats_markdown_code_block() {
-        // Formatter should wrap file content in a Markdown code block.
-        //
-        // The opening fence includes the file path:
-        //
-        // ```src/main.rs
-        // ...
-        // ```
         let result = format(Path::new("src/main.rs"), "fn main() {}\n");
 
-        assert!(result.starts_with("```"));
-        assert!(result.contains("src/main.rs"));
-        assert!(result.contains("fn main() {}"));
-        assert!(result.ends_with("```\n\n"));
+        assert_eq!(result, "```src/main.rs\nfn main() {}\n```\n\n");
     }
 
     #[test]
     fn adds_missing_trailing_newline() {
-        // If file content does not end with a newline,
-        // formatter should add one before the closing Markdown fence.
-        //
-        // This prevents malformed output like:
-        //
-        // fn main() {}```
         let result = format(Path::new("src/main.rs"), "fn main() {}");
 
-        assert!(result.contains("fn main() {}\n```"));
+        // The formatter must insert a newline before the closing fence.
+        assert_eq!(result, "```src/main.rs\nfn main() {}\n```\n\n");
     }
 
     #[test]
     fn keeps_existing_trailing_newline() {
-        // If content already ends with a newline,
-        // formatter should not need special handling beyond closing the block.
         let result = format(Path::new("src/main.rs"), "fn main() {}\n");
 
-        assert!(result.contains("fn main() {}\n```"));
+        // Existing trailing newlines must not be duplicated.
+        assert_eq!(result, "```src/main.rs\nfn main() {}\n```\n\n");
     }
 
     #[test]
     fn appends_blank_line_after_each_code_block() {
-        // Multiple formatted files are concatenated together.
-        // Ending each block with an extra blank line improves readability.
         let result = format(Path::new("src/main.rs"), "fn main() {}\n");
 
+        // Two trailing newlines leave one empty line between code blocks.
         assert!(result.ends_with("```\n\n"));
+    }
+
+    #[test]
+    fn appends_multiple_files_to_the_same_buffer() {
+        let mut output = String::new();
+
+        append(&mut output, Path::new("src/main.rs"), "fn main() {}\n");
+
+        append(&mut output, Path::new("src/lib.rs"), "pub fn run() {}\n");
+
+        // Both files should be stored in the same buffer without replacing
+        // content that was appended by an earlier call.
+        assert_eq!(
+            output,
+            concat!(
+                "```src/main.rs\n",
+                "fn main() {}\n",
+                "```\n\n",
+                "```src/lib.rs\n",
+                "pub fn run() {}\n",
+                "```\n\n",
+            )
+        );
+    }
+
+    #[test]
+    fn removes_leading_current_directory_component() {
+        let result = format(Path::new("./src/main.rs"), "fn main() {}\n");
+
+        assert_eq!(result, "```src/main.rs\nfn main() {}\n```\n\n");
     }
 }
