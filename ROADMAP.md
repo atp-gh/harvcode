@@ -190,7 +190,7 @@ src/cli.rs
 src/output.rs
 ```
 
-## v0.6.0 - Secure
+## v0.5.2 - Secure
 
 Focus on hardening harvcode for safer use on local and untrusted repositories.
 
@@ -198,114 +198,18 @@ Focus on hardening harvcode for safer use on local and untrusted repositories.
 
 - [x] Prevent symlink traversal when collecting files
 - [x] Add tests for symlinked files, symlinked directories, and symlink roots
-- [ ] Apply root filtering consistently for hidden and excluded directories
-- [ ] Add maximum per-file output size limits
-- [ ] Add maximum total output size limits
-- [ ] Prevent Markdown code fence injection
-- [ ] Sanitize file path labels in formatted output
-- [ ] Escape unsafe terminal control characters in displayed paths
-- [ ] Add default exclusions for common secret-related filenames
-- [ ] Consider optional secret detection and redaction
-- [ ] Add timeout handling for clipboard and picker subprocesses
-- [ ] Improve verbose skip reporting with clear skip reasons
 
-## Commit and Tag Release Convention
+## v0.5.3 - Lean
 
-harvcode follows a simple and consistent commit and tag convention to keep development history readable and releases predictable.
+Focus on reducing runtime overhead and simplifying platform-specific integrations.
 
-### Commit Message Convention
+### Planned
 
-Commit messages should follow a lightweight Conventional Commits style.
-
-### Commit Format
-
-```text
-<type>(optional scope): <short description>
-```
-
-### Commit Types
-
-Common commit types:
-
-- `feat`: Add a new feature
-- `fix`: Fix a bug
-- `docs`: Update documentation only
-- `refactor`: Refactor code without changing behavior
-- `style`: Formatting or style-only changes
-- `test`: Add or update tests
-- `chore`: Maintenance tasks
-- `build`: Build system or dependency changes
-- `ci`: CI/CD workflow changes
-- `perf`: Performance improvements
-- `release`: Release-related changes
-
-### Commit Examples
-
-```bash
-git commit -m "feat(filter): add include extension option"
-git commit -m "fix(output): fallback to stdout when clipboard fails"
-git commit -m "docs: update roadmap"
-git commit -m "refactor(cli): simplify argument parsing"
-git commit -m "chore: update dependencies"
-git commit -m "release: prepare v0.3.0"
-```
-
-### Commit Guidelines
-
-- Use imperative mood where possible.
-- Keep the subject line short and clear.
-- Prefer one logical change per commit.
-- Use a scope when it improves clarity.
-- Avoid vague messages such as `update`, `fix stuff`, or `changes`.
-
-### Version Tag Convention
-
-Release tags should use semantic versioning.
-
-### Tag Format
-
-```text
-vMAJOR.MINOR.PATCH
-```
-
-### Tag Examples
-
-```text
-v0.1.0
-v0.2.0
-v0.3.0
-v1.0.0
-```
-
-### Versioning Rules
-
-- Increment `MAJOR` for breaking CLI or configuration changes.
-- Increment `MINOR` for new backward-compatible features.
-- Increment `PATCH` for backward-compatible bug fixes.
-- Pre-`v1.0.0` releases may still introduce breaking changes, but they should be documented clearly.
-
-### Tagging Workflow
-
-Recommended release workflow:
-
-```bash
-git checkout main
-git pull
-cargo test
-git tag -a v0.3.0 -m "Release v0.3.0"
-git push origin v0.3.0
-```
-
-### Release Guidelines
-
-Before creating a release tag:
-
-- Ensure tests pass.
-- Update `ROADMAP.md` if milestone status changed.
-- Update documentation if CLI behavior changed.
-- Confirm the version shown by `harvcode --version`.
-- Use annotated tags for official releases.
-- Avoid moving or rewriting published release tags.
+- [x] Write formatted output directly into the destination buffer
+- [x] Replace allocation-heavy picker discovery with direct process execution
+- [x] Use static command definitions for picker selection
+- [x] Compile clipboard integrations only for supported target platforms
+- [x] Remove redundant subprocess launches across picker and clipboard workflows
 
 ### Release Branch Policy
 
