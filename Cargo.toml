@@ -12,6 +12,11 @@ readme = "README.md"
 keywords = ["cli", "clipboard", "markdown", "source-code", "developer-tools"]
 categories = ["command-line-utilities", "development-tools"]
 
+[dev-dependencies]
+assert_cmd = "2.2.2"
+predicates = "3.1.4"
+tempfile = "3.27.0"
+
 [profile.release]
 opt-level = "z"
 lto = "fat"
