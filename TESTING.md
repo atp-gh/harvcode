@@ -310,6 +310,25 @@ Integration tests verify the runtime behavior of:
 
 The tests create both matching and non-matching files and inspect stdout to confirm that only valid files are included.
 
+### Size Limits
+
+Integration tests verify the runtime behavior of:
+
+```bash
+--max-file-size
+--max-total-size
+```
+
+Covered cases include:
+
+- Files larger than `--max-file-size` are skipped without being read
+- A limit of `0` disables the per-file limit
+- Output exceeding `--max-total-size` aborts with exit code `3`
+- A total limit of `0` disables the abort
+- Invalid size values exit with code `1`
+
+`parse_size` unit tests cover plain byte values, `k`/`kb`, `m`/`mb`, `g`/`gb` suffixes, case-insensitive parsing, and rejected invalid inputs.
+
 ### CLI Errors
 
 Integration tests verify that:
@@ -459,12 +478,12 @@ These checks reduce risk but should not be treated as a complete sandbox. harvco
 
 The application currently uses the following exit codes:
 
-| Code | Meaning |
-| ---: | --- |
-| `0` | Successful execution |
-| `1` | CLI argument parsing error |
-| `2` | Picker unavailable or selection cancelled |
-| `3` | Output or list-writing failure |
+| Code | Meaning                                   |
+| ---: | ----------------------------------------- |
+|  `0` | Successful execution                      |
+|  `1` | CLI argument parsing error                |
+|  `2` | Picker unavailable or selection cancelled |
+|  `3` | Output or list-writing failure            |
 
 The current integration suite directly verifies:
 
@@ -565,7 +584,7 @@ Potential formatter tests include:
 - Non-UTF-8 paths
 - Very large text files
 
-Content containing Markdown fences may require a formatter change before it can be represented safely.
+Content containing Markdown fences is covered by the fence-injection tests: the fence length scales with the longest backtick run in the content, and path labels are sanitized.
 
 ### Argument Parsing Edge Cases
 

@@ -148,6 +148,8 @@ fn main() {
     // Pre-allocate output buffer with 1MB initial capacity.
     let mut output = String::with_capacity(1024 * 1024);
 
+    let mut output_failed = false;
+
     // Read, filter, and format files.
     for path in files {
         if !filter::is_valid(&path, &cfg.rules) {
@@ -164,8 +166,52 @@ fn main() {
             continue;
         }
 
+        // Enforce the per-file size limit before reading the whole file into
+        // memory, so an oversized file cannot exhaust memory or stall the
+        // clipboard process.
+        if cfg.max_file_size > 0 {
+            match std::fs::metadata(&path) {
+                Ok(meta) if meta.len() > cfg.max_file_size => {
+                    if cfg.verbose && !cfg.quiet {
+                        eprintln!(
+                            "Skipped {}: exceeds max file size ({} bytes)",
+                            path.display(),
+                            cfg.max_file_size
+                        );
+                    }
+                    report.skip_file();
+                    continue;
+                }
+                // A missing or unreadable file is skipped like any other
+                // unreadable input.
+                Err(_) => {
+                    report.skip_file();
+                    continue;
+                }
+                _ => {}
+            }
+        }
+
         match std::fs::read_to_string(&path) {
             Ok(content) => {
+                // Enforce the total output size limit before appending, so the
+                // final output buffer cannot grow without bound.
+                //
+                // `as u64` is a widening (or equal-width) conversion on every
+                // supported platform, so it cannot lose information.
+                let output_size = output.len() as u64;
+                let content_size = content.len() as u64;
+                if cfg.max_total_size > 0
+                    && output_size.saturating_add(content_size) > cfg.max_total_size
+                {
+                    eprintln!(
+                        "Output size limit exceeded ({} bytes); aborting",
+                        cfg.max_total_size
+                    );
+                    output_failed = true;
+                    break;
+                }
+
                 report.collect_file();
                 formatter::append(&mut output, &path, &content);
             }
@@ -174,8 +220,6 @@ fn main() {
     }
 
     report.set_output_size(output.len());
-
-    let mut output_failed = false;
 
     // Explicit stdout output.
     if cfg.output.stdout {
@@ -273,6 +317,9 @@ mod tests {
             quiet: false,
             verbose: false,
             list: false,
+            // Keep limits out of the way in these traversal tests.
+            max_file_size: 0,
+            max_total_size: 0,
         }
     }
 

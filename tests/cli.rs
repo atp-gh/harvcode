@@ -329,6 +329,88 @@ fn exclude_file_filters_stdout_output() {
 }
 
 #[test]
+fn max_file_size_skips_oversized_files() {
+    // `--max-file-size` should skip files larger than the limit without
+    // reading them, so an oversized file cannot exhaust memory.
+    let dir = TestDir::new("max-file-size-skips-oversized-files");
+
+    dir.write("main.rs", "fn main() {}\n");
+    dir.write("big.txt", &"x".repeat(2048));
+
+    let output = run_in(dir.path(), &["--stdout", "--max-file-size", "1024"]);
+
+    assert!(output.status.success());
+
+    let out = stdout(&output);
+
+    assert!(out.contains("fn main() {}"));
+    assert!(!out.contains("xxxx"));
+}
+
+#[test]
+fn max_file_size_zero_disables_limit() {
+    // A limit of 0 means "no limit", so the file is collected normally.
+    let dir = TestDir::new("max-file-size-zero-disables-limit");
+
+    dir.write("big.txt", &"x".repeat(2048));
+
+    let output = run_in(dir.path(), &["--stdout", "--max-file-size", "0"]);
+
+    assert!(output.status.success());
+
+    let out = stdout(&output);
+    assert!(out.contains("xxxx"));
+}
+
+#[test]
+fn max_total_size_aborts_with_error() {
+    // When the total output exceeds `--max-total-size`, harvcode should stop
+    // and exit with the output-failure code instead of writing everything.
+    let dir = TestDir::new("max-total-size-aborts-with-error");
+
+    dir.write("main.rs", "fn main() {}\n");
+    dir.write("notes.txt", &"y".repeat(2048));
+
+    let output = run_in(dir.path(), &["--stdout", "--max-total-size", "1024"]);
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(3));
+
+    let err = stderr(&output);
+    assert!(err.contains("Output size limit exceeded"));
+}
+
+#[test]
+fn max_total_size_zero_disables_limit() {
+    // A total limit of 0 means "no limit", so large combined output is fine.
+    let dir = TestDir::new("max-total-size-zero-disables-limit");
+
+    dir.write("notes.txt", &"y".repeat(2048));
+
+    let output = run_in(dir.path(), &["--stdout", "--max-total-size", "0"]);
+
+    assert!(output.status.success());
+
+    let out = stdout(&output);
+    assert!(out.contains("yyyy"));
+}
+
+#[test]
+fn invalid_size_value_exits_with_error() {
+    // A non-numeric size value should be a CLI error (exit code 1).
+    let output = harvcode()
+        .args(["--max-file-size", "abc"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert_eq!(output.status.code(), Some(1));
+
+    let err = stderr(&output);
+    assert!(err.contains("Invalid size value"));
+}
+
+#[test]
 fn unknown_option_exits_with_error() {
     // Unknown options should produce a CLI error and exit with code 1.
     //

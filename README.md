@@ -22,6 +22,7 @@ It is useful when you want to quickly share project code, selected files, or AI-
 - Skips hidden files and directories
 - Skips common binary and archive file types
 - Supports include and exclude filtering
+- Enforces per-file and total output size limits
 - Simple, fast, and dependency-light
 
 ## Design Goals
@@ -147,6 +148,10 @@ Options:
       --list                    List collected file paths only
       --quiet                   Suppress non-error status output
       --verbose                 Print execution report
+
+Limits:
+      --max-file-size <size>    Skip files larger than this size (default 1m; 0 = unlimited)
+      --max-total-size <size>   Abort when total output exceeds this size (default 5m; 0 = unlimited)
 
 Output:
       --clipboard               Copy output to clipboard

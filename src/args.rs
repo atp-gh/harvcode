@@ -20,6 +20,8 @@ pub enum PickerKind {
 /// - `quiet`: suppress non-error status output
 /// - `verbose`: print execution report
 /// - `list`: print the final file list instead of file contents
+/// - `max_file_size`: per-file size limit in bytes (0 = unlimited)
+/// - `max_total_size`: total output size limit in bytes (0 = unlimited)
 pub struct Config {
     pub roots: Vec<PathBuf>,
     pub pick: bool,
@@ -29,6 +31,8 @@ pub struct Config {
     pub quiet: bool,
     pub verbose: bool,
     pub list: bool,
+    pub max_file_size: u64,
+    pub max_total_size: u64,
 }
 
 /// Output behavior derived from CLI arguments.
@@ -56,6 +60,12 @@ pub struct OutputConfig {
 
 /// Version string from Cargo.toml at compile time.
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Default per-file size limit: 1 MB.
+const DEFAULT_MAX_FILE_SIZE: u64 = 1024 * 1024;
+
+/// Default total output size limit: 5 MB.
+const DEFAULT_MAX_TOTAL_SIZE: u64 = 5 * 1024 * 1024;
 
 /// Parse command-line arguments into a `Config`.
 ///
@@ -85,6 +95,8 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
     let mut quiet = false;
     let mut verbose = false;
     let mut list = false;
+    let mut max_file_size = DEFAULT_MAX_FILE_SIZE;
+    let mut max_total_size = DEFAULT_MAX_TOTAL_SIZE;
 
     let mut i = 0;
 
@@ -148,6 +160,16 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
                 rules.exclude_files = parse_values(require_value(&args, &mut i, "--exclude-file")?);
             }
 
+            "--max-file-size" => {
+                let value = require_value(&args, &mut i, "--max-file-size")?;
+                max_file_size = parse_size(&value)?;
+            }
+
+            "--max-total-size" => {
+                let value = require_value(&args, &mut i, "--max-total-size")?;
+                max_total_size = parse_size(&value)?;
+            }
+
             _ if arg.starts_with("--output=") => {
                 let value = after_equal(arg);
 
@@ -188,6 +210,14 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
                 rules.exclude_files = parse_values(after_equal(arg));
             }
 
+            _ if arg.starts_with("--max-file-size=") => {
+                max_file_size = parse_size(&after_equal(arg))?;
+            }
+
+            _ if arg.starts_with("--max-total-size=") => {
+                max_total_size = parse_size(&after_equal(arg))?;
+            }
+
             _ if arg.starts_with('-') => {
                 eprintln!("Unknown option: {}", arg);
                 eprintln!("Use --help for usage.");
@@ -219,6 +249,8 @@ pub fn parse_args(args: Vec<String>) -> Result<Config, ()> {
         quiet,
         verbose,
         list,
+        max_file_size,
+        max_total_size,
     })
 }
 
@@ -248,6 +280,44 @@ fn parse_picker(value: String) -> Result<PickerKind, ()> {
         _ => {
             eprintln!("Unsupported picker: {}", value);
             eprintln!("Available pickers: sk, fzf");
+            Err(())
+        }
+    }
+}
+
+/// Parse a human-readable size value into bytes.
+///
+/// Supported forms (case-insensitive):
+/// - plain bytes: `512`, `1048576`
+/// - kilobytes: `1k`, `1kb`, `2K`
+/// - megabytes: `5m`, `5mb`, `10M`
+/// - gigabytes: `1g`, `1gb`, `2G`
+///
+/// Returns an error when the value is empty, contains a non-numeric prefix,
+/// or overflows `u64`.
+fn parse_size(value: &str) -> Result<u64, ()> {
+    let value = value.trim().to_ascii_lowercase();
+
+    let (digits, multiplier) = if let Some(rest) = value.strip_suffix("kb") {
+        (rest, 1024)
+    } else if let Some(rest) = value.strip_suffix("mb") {
+        (rest, 1024 * 1024)
+    } else if let Some(rest) = value.strip_suffix("gb") {
+        (rest, 1024 * 1024 * 1024)
+    } else if let Some(rest) = value.strip_suffix('k') {
+        (rest, 1024)
+    } else if let Some(rest) = value.strip_suffix('m') {
+        (rest, 1024 * 1024)
+    } else if let Some(rest) = value.strip_suffix('g') {
+        (rest, 1024 * 1024 * 1024)
+    } else {
+        (value.as_str(), 1)
+    };
+
+    match digits.parse::<u64>() {
+        Ok(bytes) => bytes.checked_mul(multiplier).ok_or(()),
+        Err(_) => {
+            eprintln!("Invalid size value: {}", value);
             Err(())
         }
     }
@@ -283,6 +353,10 @@ Options:
       --list                    List collected file paths only
       --quiet                   Suppress non-error status output
       --verbose                 Print execution report
+
+Limits:
+      --max-file-size <size>    Skip files larger than this size (default 1m; 0 = unlimited)
+      --max-total-size <size>   Abort when total output exceeds this size (default 5m; 0 = unlimited)
 
 Output:
       --clipboard               Copy output to clipboard
@@ -587,5 +661,84 @@ mod tests {
         assert!(cfg.list);
         assert!(cfg.output.clipboard);
         assert!(cfg.output.explicit);
+    }
+
+    #[test]
+    fn defaults_to_one_megabyte_file_limit() {
+        // Without an explicit limit, single files larger than 1 MB are skipped.
+        let cfg = parse(&[]);
+
+        assert_eq!(cfg.max_file_size, 1024 * 1024);
+    }
+
+    #[test]
+    fn defaults_to_five_megabyte_total_limit() {
+        // Without an explicit limit, output is aborted once it exceeds 5 MB.
+        let cfg = parse(&[]);
+
+        assert_eq!(cfg.max_total_size, 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parses_max_file_size() {
+        let cfg = parse(&["--max-file-size", "512"]);
+        assert_eq!(cfg.max_file_size, 512);
+    }
+
+    #[test]
+    fn parses_max_total_size_with_suffix() {
+        let cfg = parse(&["--max-total-size", "2m"]);
+        assert_eq!(cfg.max_total_size, 2 * 1024 * 1024);
+    }
+
+    #[test]
+    fn parses_size_with_equal_syntax() {
+        let cfg = parse(&["--max-file-size=1k"]);
+        assert_eq!(cfg.max_file_size, 1024);
+    }
+
+    #[test]
+    fn parses_zero_as_unlimited() {
+        // 0 is accepted and means "no limit" in the runtime.
+        let cfg = parse(&["--max-file-size", "0", "--max-total-size", "0"]);
+
+        assert_eq!(cfg.max_file_size, 0);
+        assert_eq!(cfg.max_total_size, 0);
+    }
+
+    #[test]
+    fn returns_error_for_invalid_size_value() {
+        let result = parse_args(vec!["--max-file-size".to_string(), "abc".to_string()]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_size_accepts_plain_bytes() {
+        assert_eq!(parse_size("512"), Ok(512));
+    }
+
+    #[test]
+    fn parse_size_accepts_suffixes() {
+        assert_eq!(parse_size("1k"), Ok(1024));
+        assert_eq!(parse_size("1kb"), Ok(1024));
+        assert_eq!(parse_size("2m"), Ok(2 * 1024 * 1024));
+        assert_eq!(parse_size("2mb"), Ok(2 * 1024 * 1024));
+        assert_eq!(parse_size("1g"), Ok(1024 * 1024 * 1024));
+        assert_eq!(parse_size("1gb"), Ok(1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_is_case_insensitive() {
+        assert_eq!(parse_size("1K"), Ok(1024));
+        assert_eq!(parse_size("1KB"), Ok(1024));
+        assert_eq!(parse_size("5M"), Ok(5 * 1024 * 1024));
+    }
+
+    #[test]
+    fn parse_size_rejects_invalid_values() {
+        assert!(parse_size("").is_err());
+        assert!(parse_size("abc").is_err());
+        assert!(parse_size("-1").is_err());
+        assert!(parse_size("1x").is_err());
     }
 }
