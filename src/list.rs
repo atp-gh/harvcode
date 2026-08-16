@@ -53,7 +53,11 @@ fn select_files(files: Vec<PathBuf>, cfg: &Config, report: &mut Report) -> Vec<P
         .collect::<Vec<_>>();
 
     // Keep list output stable across filesystems and runs.
-    listed_files.sort_by_key(|path| path.to_string_lossy().to_string());
+    //
+    // Compare the lossy representations in place: `to_string_lossy` borrows
+    // for valid UTF-8 paths, so no intermediate `String` is allocated per
+    // path during the sort.
+    listed_files.sort_by(|a, b| a.to_string_lossy().cmp(&b.to_string_lossy()));
 
     listed_files
 }

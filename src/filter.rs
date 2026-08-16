@@ -56,36 +56,53 @@ pub fn is_valid(path: &Path, rules: &Rules) -> bool {
         None => return rules.include_ext.is_empty(),
     };
 
-    if SKIP_EXT.contains(&ext.as_str()) {
+    if SKIP_EXT.iter().any(|skip| ext.eq_ignore_ascii_case(skip)) {
         return false;
     }
 
-    if rules.exclude_ext.contains(&ext) {
+    if rules
+        .exclude_ext
+        .iter()
+        .any(|excluded| ext.eq_ignore_ascii_case(excluded))
+    {
         return false;
     }
 
-    if !rules.include_ext.is_empty() && !rules.include_ext.contains(&ext) {
+    if !rules.include_ext.is_empty()
+        && !rules
+            .include_ext
+            .iter()
+            .any(|included| ext.eq_ignore_ascii_case(included))
+    {
         return false;
     }
 
     true
 }
 
-/// Return lowercase file extension.
-fn extension(path: &Path) -> Option<String> {
-    path.extension()
-        .and_then(|s| s.to_str())
-        .map(|s| s.to_ascii_lowercase())
+/// Return the file extension, if any.
+///
+/// Returns a borrowed slice instead of a lowercased `String`; comparisons
+/// against rule lists use `eq_ignore_ascii_case`, so no per-file allocation
+/// is needed on the hot path.
+fn extension(path: &Path) -> Option<&str> {
+    path.extension().and_then(|s| s.to_str())
 }
 
 /// Match file or directory name case-insensitively.
+///
+/// Compares against the rule list in place instead of lowercasing the name
+/// into a fresh `String`, avoiding an allocation for every checked file or
+/// directory during traversal.
 fn matches_name(path: &Path, names: &[String]) -> bool {
     let name = match path.file_name().and_then(|s| s.to_str()) {
-        Some(name) => name.to_ascii_lowercase(),
+        Some(name) => name,
         None => return false,
     };
 
-    names.contains(&name)
+    names
+        .iter()
+        .any(|candidate| name.eq_ignore_ascii_case(candidate))
 }
 #[cfg(test)]
 mod tests {

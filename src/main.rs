@@ -157,39 +157,34 @@ fn main() {
             continue;
         }
 
-        // Re-check before reading.
+        // Re-check before reading, using one `symlink_metadata` call for both
+        // purposes:
         //
-        // This avoids reading a path that was replaced by a symlink after traversal
-        // but before read_to_string.
-        if !is_regular_file_no_symlink(&path) {
+        // 1. Avoid reading a path that was replaced by a symlink after
+        //    traversal but before read_to_string.
+        // 2. Enforce the per-file size limit before reading the whole file
+        //    into memory, so an oversized file cannot exhaust memory or stall
+        //    the clipboard process.
+        let meta = match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_file() => meta,
+            // A missing, unreadable, or non-regular (e.g. symlink) file is
+            // skipped like any other unreadable input.
+            _ => {
+                report.skip_file();
+                continue;
+            }
+        };
+
+        if cfg.max_file_size > 0 && meta.len() > cfg.max_file_size {
+            if cfg.verbose && !cfg.quiet {
+                eprintln!(
+                    "Skipped {}: exceeds max file size ({} bytes)",
+                    path.display(),
+                    cfg.max_file_size
+                );
+            }
             report.skip_file();
             continue;
-        }
-
-        // Enforce the per-file size limit before reading the whole file into
-        // memory, so an oversized file cannot exhaust memory or stall the
-        // clipboard process.
-        if cfg.max_file_size > 0 {
-            match std::fs::metadata(&path) {
-                Ok(meta) if meta.len() > cfg.max_file_size => {
-                    if cfg.verbose && !cfg.quiet {
-                        eprintln!(
-                            "Skipped {}: exceeds max file size ({} bytes)",
-                            path.display(),
-                            cfg.max_file_size
-                        );
-                    }
-                    report.skip_file();
-                    continue;
-                }
-                // A missing or unreadable file is skipped like any other
-                // unreadable input.
-                Err(_) => {
-                    report.skip_file();
-                    continue;
-                }
-                _ => {}
-            }
         }
 
         match std::fs::read_to_string(&path) {
