@@ -1,48 +1,32 @@
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
-/// A tiny zero-dependency temporary directory helper.
+use assert_cmd::Command;
+use predicates::prelude::*;
+use tempfile::TempDir;
+
+/// A temporary project directory for CLI integration tests.
 ///
-/// This avoids adding `tempfile` as a dev-dependency.
-/// Each test gets a unique directory under the system temp directory.
-///
-/// The directory name includes:
-/// - test name
-/// - current process id
-/// - current timestamp in nanoseconds
-///
-/// This makes collisions very unlikely, even when tests run in parallel.
+/// `tempfile::TempDir` handles both uniqueness and cleanup automatically,
+/// including when an assertion panics, so tests never leak directories.
 struct TestDir {
-    path: PathBuf,
+    dir: TempDir,
 }
 
 impl TestDir {
     /// Create a new unique temporary test directory.
     fn new(name: &str) -> Self {
-        let mut path = std::env::temp_dir();
+        let dir = tempfile::Builder::new()
+            .prefix(&format!("harvcode-test-{}-", name))
+            .tempdir()
+            .unwrap();
 
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-
-        path.push(format!(
-            "harvcode-test-{}-{}-{}",
-            name,
-            std::process::id(),
-            now
-        ));
-
-        fs::create_dir_all(&path).unwrap();
-
-        Self { path }
+        Self { dir }
     }
 
     /// Return the root path of this test directory.
     fn path(&self) -> &Path {
-        &self.path
+        self.dir.path()
     }
 
     /// Write a file under the test directory.
@@ -53,7 +37,7 @@ impl TestDir {
     /// - `.git/config`
     /// - `target/generated.rs`
     fn write(&self, relative: &str, content: &str) {
-        let path = self.path.join(relative);
+        let path = self.path().join(relative);
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).unwrap();
@@ -64,44 +48,18 @@ impl TestDir {
 
     /// Create a directory under the test directory.
     fn mkdir(&self, relative: &str) {
-        fs::create_dir_all(self.path.join(relative)).unwrap();
+        fs::create_dir_all(self.path().join(relative)).unwrap();
     }
 }
 
-impl Drop for TestDir {
-    fn drop(&mut self) {
-        // Best-effort cleanup.
-        //
-        // We intentionally ignore cleanup errors here because a failed cleanup
-        // should not hide the real test result.
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
-/// Create a command pointing to the compiled harvcode binary.
-///
-/// `CARGO_BIN_EXE_harvcode` is provided by Cargo for integration tests.
-/// This lets us test the real CLI binary without extra crates like assert_cmd.
+/// Build a command running the compiled harvcode binary.
 fn harvcode() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_harvcode"))
+    Command::cargo_bin("harvcode").unwrap()
 }
 
 /// Run harvcode inside a specific working directory with the provided args.
-fn run_in(dir: &Path, args: &[&str]) -> Output {
-    harvcode().current_dir(dir).args(args).output().unwrap()
-}
-
-/// Decode stdout as UTF-8 text.
-///
-/// The tool produces text output, so lossy UTF-8 decoding is acceptable here.
-/// If invalid bytes ever appear, the test will still produce readable diagnostics.
-fn stdout(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stdout).to_string()
-}
-
-/// Decode stderr as UTF-8 text.
-fn stderr(output: &Output) -> String {
-    String::from_utf8_lossy(&output.stderr).to_string()
+fn run_in(dir: &Path, args: &[&str]) -> assert_cmd::assert::Assert {
+    harvcode().current_dir(dir).args(args).assert()
 }
 
 #[test]
@@ -114,16 +72,12 @@ fn stdout_outputs_collected_files() {
     dir.write("src/main.rs", "fn main() {}\n");
     dir.write("README.md", "# Test\n");
 
-    let output = run_in(dir.path(), &["--stdout"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("src/main.rs"));
-    assert!(out.contains("fn main() {}"));
-    assert!(out.contains("README.md"));
-    assert!(out.contains("# Test"));
+    run_in(dir.path(), &["--stdout"])
+        .success()
+        .stdout(predicate::str::contains("src/main.rs"))
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("README.md"))
+        .stdout(predicate::str::contains("# Test"));
 }
 
 #[test]
@@ -137,14 +91,10 @@ fn stdout_skips_hidden_files() {
     dir.write(".env", "SECRET=value\n");
     dir.write("main.rs", "fn main() {}\n");
 
-    let output = run_in(dir.path(), &["--stdout"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("SECRET=value"));
+    run_in(dir.path(), &["--stdout"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("SECRET=value").not());
 }
 
 #[test]
@@ -160,14 +110,10 @@ fn stdout_skips_hidden_directories() {
     dir.write(".git/config", "hidden git config\n");
     dir.write("main.rs", "fn main() {}\n");
 
-    let output = run_in(dir.path(), &["--stdout"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("hidden git config"));
+    run_in(dir.path(), &["--stdout"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("hidden git config").not());
 }
 
 #[test]
@@ -182,15 +128,11 @@ fn stdout_skips_binary_extensions() {
     dir.write("image.png", "fake image content\n");
     dir.write("archive.zip", "fake zip content\n");
 
-    let output = run_in(dir.path(), &["--stdout"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("fake image content"));
-    assert!(!out.contains("fake zip content"));
+    run_in(dir.path(), &["--stdout"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("fake image content").not())
+        .stdout(predicate::str::contains("fake zip content").not());
 }
 
 #[test]
@@ -206,12 +148,9 @@ fn output_writes_to_file() {
     let output_path = dir.path().join("context.md");
     let output_path_string = output_path.to_string_lossy().to_string();
 
-    let output = run_in(dir.path(), &["--output", &output_path_string]);
-
-    assert!(output.status.success());
-
-    let err = stderr(&output);
-    assert!(err.contains("Wrote output to"));
+    run_in(dir.path(), &["--output", &output_path_string])
+        .success()
+        .stderr(predicate::str::contains("Wrote output to"));
 
     let content = fs::read_to_string(output_path).unwrap();
 
@@ -234,15 +173,10 @@ fn stdout_and_output_can_be_combined() {
     let output_path = dir.path().join("context.md");
     let output_path_string = output_path.to_string_lossy().to_string();
 
-    let output = run_in(dir.path(), &["--stdout", "--output", &output_path_string]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-    let err = stderr(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(err.contains("Wrote output to"));
+    run_in(dir.path(), &["--stdout", "--output", &output_path_string])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stderr(predicate::str::contains("Wrote output to"));
 
     let content = fs::read_to_string(output_path).unwrap();
 
@@ -259,14 +193,10 @@ fn include_ext_filters_stdout_output() {
     dir.write("main.rs", "fn main() {}\n");
     dir.write("README.md", "# Readme\n");
 
-    let output = run_in(dir.path(), &["--stdout", "--include-ext", "rs"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("# Readme"));
+    run_in(dir.path(), &["--stdout", "--include-ext", "rs"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("# Readme").not());
 }
 
 #[test]
@@ -277,14 +207,10 @@ fn exclude_ext_filters_stdout_output() {
     dir.write("main.rs", "fn main() {}\n");
     dir.write("config.json", "{\"name\":\"test\"}\n");
 
-    let output = run_in(dir.path(), &["--stdout", "--exclude-ext", "json"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("\"name\""));
+    run_in(dir.path(), &["--stdout", "--exclude-ext", "json"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("\"name\"").not());
 }
 
 #[test]
@@ -298,14 +224,10 @@ fn exclude_dir_filters_stdout_output() {
     dir.write("src/main.rs", "fn main() {}\n");
     dir.write("target/generated.rs", "generated\n");
 
-    let output = run_in(dir.path(), &["--stdout", "--exclude-dir", "target"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("generated"));
+    run_in(dir.path(), &["--stdout", "--exclude-dir", "target"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("generated").not());
 }
 
 #[test]
@@ -318,14 +240,10 @@ fn exclude_file_filters_stdout_output() {
     dir.write("main.rs", "fn main() {}\n");
     dir.write("secret.rs", "secret\n");
 
-    let output = run_in(dir.path(), &["--stdout", "--exclude-file", "secret.rs"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("secret"));
+    run_in(dir.path(), &["--stdout", "--exclude-file", "secret.rs"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("secret").not());
 }
 
 #[test]
@@ -337,14 +255,10 @@ fn max_file_size_skips_oversized_files() {
     dir.write("main.rs", "fn main() {}\n");
     dir.write("big.txt", &"x".repeat(2048));
 
-    let output = run_in(dir.path(), &["--stdout", "--max-file-size", "1024"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-
-    assert!(out.contains("fn main() {}"));
-    assert!(!out.contains("xxxx"));
+    run_in(dir.path(), &["--stdout", "--max-file-size", "1024"])
+        .success()
+        .stdout(predicate::str::contains("fn main() {}"))
+        .stdout(predicate::str::contains("xxxx").not());
 }
 
 #[test]
@@ -354,12 +268,9 @@ fn max_file_size_zero_disables_limit() {
 
     dir.write("big.txt", &"x".repeat(2048));
 
-    let output = run_in(dir.path(), &["--stdout", "--max-file-size", "0"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-    assert!(out.contains("xxxx"));
+    run_in(dir.path(), &["--stdout", "--max-file-size", "0"])
+        .success()
+        .stdout(predicate::str::contains("xxxx"));
 }
 
 #[test]
@@ -371,13 +282,10 @@ fn max_total_size_aborts_with_error() {
     dir.write("main.rs", "fn main() {}\n");
     dir.write("notes.txt", &"y".repeat(2048));
 
-    let output = run_in(dir.path(), &["--stdout", "--max-total-size", "1024"]);
-
-    assert!(!output.status.success());
-    assert_eq!(output.status.code(), Some(3));
-
-    let err = stderr(&output);
-    assert!(err.contains("Output size limit exceeded"));
+    run_in(dir.path(), &["--stdout", "--max-total-size", "1024"])
+        .failure()
+        .code(3)
+        .stderr(predicate::str::contains("Output size limit exceeded"));
 }
 
 #[test]
@@ -387,27 +295,127 @@ fn max_total_size_zero_disables_limit() {
 
     dir.write("notes.txt", &"y".repeat(2048));
 
-    let output = run_in(dir.path(), &["--stdout", "--max-total-size", "0"]);
-
-    assert!(output.status.success());
-
-    let out = stdout(&output);
-    assert!(out.contains("yyyy"));
+    run_in(dir.path(), &["--stdout", "--max-total-size", "0"])
+        .success()
+        .stdout(predicate::str::contains("yyyy"));
 }
 
 #[test]
-fn invalid_size_value_exits_with_error() {
-    // A non-numeric size value should be a CLI error (exit code 1).
-    let output = harvcode()
-        .args(["--max-file-size", "abc"])
-        .output()
-        .unwrap();
+fn list_mode_prints_paths_only() {
+    // `--list` should print only the collected file paths, never contents.
+    let dir = TestDir::new("list-mode-prints-paths-only");
 
-    assert!(!output.status.success());
-    assert_eq!(output.status.code(), Some(1));
+    dir.write("src/main.rs", "fn main() {}\n");
+    dir.write("README.md", "# Readme\n");
 
-    let err = stderr(&output);
-    assert!(err.contains("Invalid size value"));
+    run_in(dir.path(), &["--list"])
+        .success()
+        .stdout(predicate::str::contains("src/main.rs"))
+        .stdout(predicate::str::contains("README.md"))
+        .stdout(predicate::str::contains("fn main() {}").not())
+        .stdout(predicate::str::contains("# Readme").not());
+}
+
+#[test]
+fn list_mode_respects_filters() {
+    // `--list` applies the same filters as content output.
+    let dir = TestDir::new("list-mode-respects-filters");
+
+    dir.write("main.rs", "fn main() {}\n");
+    dir.write("README.md", "# Readme\n");
+    dir.write(".env", "SECRET=value\n");
+
+    run_in(dir.path(), &["--list", "--include-ext", "rs"])
+        .success()
+        .stdout(predicate::str::contains("main.rs"))
+        .stdout(predicate::str::contains("README.md").not())
+        .stdout(predicate::str::contains("SECRET=value").not());
+}
+
+#[test]
+fn list_mode_uses_stable_ordering() {
+    // List output should be sorted deterministically regardless of the
+    // filesystem's directory iteration order.
+    let dir = TestDir::new("list-mode-uses-stable-ordering");
+
+    dir.write("c.txt", "c\n");
+    dir.write("a.txt", "a\n");
+    dir.write("b.txt", "b\n");
+
+    let assert = run_in(dir.path(), &["--list"]).success();
+    let out = String::from_utf8_lossy(&assert.get_output().stdout).to_string();
+
+    // Paths are printed relative to the working directory ("./a.txt"), so
+    // compare only the file names in order.
+    let names: Vec<&str> = out
+        .lines()
+        .map(|line| line.trim_start_matches("./"))
+        .collect();
+    assert_eq!(names, vec!["a.txt", "b.txt", "c.txt"]);
+}
+
+#[test]
+fn list_mode_ignores_output_file() {
+    // In list mode, `--output <file>` must not create or modify the file.
+    let dir = TestDir::new("list-mode-ignores-output-file");
+
+    dir.write("main.rs", "fn main() {}\n");
+
+    let output_path = dir.path().join("context.md");
+    let output_path_string = output_path.to_string_lossy().to_string();
+
+    run_in(dir.path(), &["--list", "--output", &output_path_string]).success();
+
+    assert!(!output_path.exists());
+}
+
+#[test]
+fn verbose_prints_execution_report() {
+    // `--verbose` prints a report with counts and destinations on stderr.
+    let dir = TestDir::new("verbose-prints-execution-report");
+
+    dir.write("main.rs", "fn main() {}\n");
+
+    run_in(dir.path(), &["--stdout", "--verbose"])
+        .success()
+        .stderr(predicate::str::contains("Collected files: 1"))
+        .stderr(predicate::str::contains("Output destination: stdout"));
+}
+
+#[test]
+fn quiet_suppresses_status_messages() {
+    // `--quiet` suppresses non-error status output such as "Wrote output to".
+    let dir = TestDir::new("quiet-suppresses-status-messages");
+
+    dir.write("main.rs", "fn main() {}\n");
+
+    let output_path = dir.path().join("context.md");
+    let output_path_string = output_path.to_string_lossy().to_string();
+
+    run_in(dir.path(), &["--quiet", "--output", &output_path_string])
+        .success()
+        .stderr(predicate::str::contains("Wrote output to").not());
+}
+
+#[test]
+fn help_prints_usage() {
+    // `--help` should print usage and exit successfully.
+    harvcode()
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("Usage:"))
+        .stdout(predicate::str::contains("--max-file-size"));
+}
+
+#[test]
+fn version_prints_version() {
+    // `--version` should print the version and exit successfully.
+    harvcode()
+        .arg("--version")
+        .assert()
+        .success()
+        .stdout(predicate::str::starts_with("harvcode "));
 }
 
 #[test]
@@ -415,14 +423,12 @@ fn unknown_option_exits_with_error() {
     // Unknown options should produce a CLI error and exit with code 1.
     //
     // This protects users from typos silently being interpreted as paths.
-    let output = harvcode().arg("--unknown").output().unwrap();
-
-    assert!(!output.status.success());
-    assert_eq!(output.status.code(), Some(1));
-
-    let err = stderr(&output);
-
-    assert!(err.contains("Unknown option"));
+    harvcode()
+        .arg("--unknown")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("Unknown option"));
 }
 
 #[test]
@@ -430,12 +436,21 @@ fn missing_output_value_exits_with_error() {
     // `--output` requires a file path.
     //
     // Missing the value should fail during argument parsing and exit with code 1.
-    let output = harvcode().arg("--output").output().unwrap();
+    harvcode()
+        .arg("--output")
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("Missing value for --output"));
+}
 
-    assert!(!output.status.success());
-    assert_eq!(output.status.code(), Some(1));
-
-    let err = stderr(&output);
-
-    assert!(err.contains("Missing value for --output"));
+#[test]
+fn invalid_size_value_exits_with_error() {
+    // A non-numeric size value should be a CLI error (exit code 1).
+    harvcode()
+        .args(["--max-file-size", "abc"])
+        .assert()
+        .failure()
+        .code(1)
+        .stderr(predicate::str::contains("Invalid size value"));
 }

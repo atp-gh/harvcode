@@ -293,19 +293,6 @@ mod tests {
     use crate::args::{OutputConfig, PickerKind};
     use crate::filter::Rules;
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn temp_test_dir(name: &str) -> PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-
-        let dir = std::env::temp_dir().join(format!("harvcode-main-test-{}-{}", name, unique));
-
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
 
     fn test_config_with_roots(roots: Vec<PathBuf>) -> Config {
         Config {
@@ -323,19 +310,74 @@ mod tests {
         }
     }
 
+    #[test]
+    fn expand_roots_collects_files_from_directory() {
+        let base = tempfile::tempdir().unwrap();
+        let project = base.path().join("project");
+        fs::create_dir_all(project.join("src")).unwrap();
+
+        fs::write(project.join("main.rs"), "fn main() {}\n").unwrap();
+        fs::write(project.join("src/lib.rs"), "pub fn run() {}\n").unwrap();
+
+        let cfg = test_config_with_roots(vec![project]);
+        let files = expand_roots(&cfg);
+
+        assert!(files.iter().any(|path| path.ends_with("main.rs")));
+        assert!(files.iter().any(|path| path.ends_with("src/lib.rs")));
+    }
+
+    #[test]
+    fn expand_roots_includes_direct_file_roots() {
+        let base = tempfile::tempdir().unwrap();
+        let file = base.path().join("main.rs");
+        fs::write(&file, "fn main() {}\n").unwrap();
+
+        let cfg = test_config_with_roots(vec![file.clone()]);
+        let files = expand_roots(&cfg);
+
+        assert_eq!(files, vec![file]);
+    }
+
+    #[test]
+    fn expand_roots_skips_hidden_root_directory() {
+        let base = tempfile::tempdir().unwrap();
+        let git = base.path().join(".git");
+        fs::create_dir_all(&git).unwrap();
+        fs::write(git.join("config"), "secret\n").unwrap();
+
+        let cfg = test_config_with_roots(vec![git]);
+        let files = expand_roots(&cfg);
+
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn expand_roots_skips_excluded_root_directory() {
+        let base = tempfile::tempdir().unwrap();
+        let target = base.path().join("target");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("generated.rs"), "generated\n").unwrap();
+
+        let mut cfg = test_config_with_roots(vec![target]);
+        cfg.rules.exclude_dirs = vec!["target".to_string()];
+        let files = expand_roots(&cfg);
+
+        assert!(files.is_empty());
+    }
+
     #[cfg(unix)]
     #[test]
     fn expand_roots_does_not_follow_symlinked_file_root() {
         use std::os::unix::fs::symlink;
 
-        let base = temp_test_dir("root-symlink-file");
-        let outside = base.join("outside");
+        let base = tempfile::tempdir().unwrap();
+        let outside = base.path().join("outside");
         fs::create_dir_all(&outside).unwrap();
 
         let secret = outside.join("secret.rs");
         fs::write(&secret, "secret").unwrap();
 
-        let link = base.join("linked-secret.rs");
+        let link = base.path().join("linked-secret.rs");
         symlink(&secret, &link).unwrap();
 
         let cfg = test_config_with_roots(vec![link]);
@@ -345,8 +387,6 @@ mod tests {
             files.is_empty(),
             "explicit symlink file roots should not be collected"
         );
-
-        let _ = fs::remove_dir_all(base);
     }
 
     #[cfg(unix)]
@@ -354,14 +394,14 @@ mod tests {
     fn expand_roots_does_not_follow_symlinked_directory_root() {
         use std::os::unix::fs::symlink;
 
-        let base = temp_test_dir("root-symlink-dir");
-        let outside = base.join("outside");
+        let base = tempfile::tempdir().unwrap();
+        let outside = base.path().join("outside");
         fs::create_dir_all(&outside).unwrap();
 
         let secret = outside.join("secret.rs");
         fs::write(&secret, "secret").unwrap();
 
-        let link = base.join("linked-outside");
+        let link = base.path().join("linked-outside");
         symlink(&outside, &link).unwrap();
 
         let cfg = test_config_with_roots(vec![link]);
@@ -371,7 +411,5 @@ mod tests {
             files.is_empty(),
             "explicit symlink directory roots should not be traversed"
         );
-
-        let _ = fs::remove_dir_all(base);
     }
 }

@@ -2,7 +2,20 @@
 
 This document describes the testing strategy for **harvcode**.
 
-harvcode uses Rust's built-in test framework and the standard library only. The test suite intentionally avoids additional test dependencies so that it remains lightweight, portable, and consistent with the project's dependency-conscious design.
+harvcode uses Rust's built-in test framework for unit tests and three focused
+crates for integration and filesystem testing:
+
+- `assert_cmd` — run the compiled CLI binary and assert on exit codes, stdout,
+  and stderr
+- `predicates` — composable assertions on command output
+- `tempfile` — automatic temporary directories for filesystem-based tests
+
+These are **dev-dependencies only** and never ship in the release binary. They
+replace hand-rolled test helpers (manual temp directories, manual process
+launching) with battle-tested abstractions, keeping the test code concise while
+making the coverage more thorough.
+
+## Goals
 
 ## Goals
 
@@ -78,7 +91,10 @@ src/
 ├── formatter.rs   # Markdown formatting tests
 ├── main.rs        # Root expansion and symlink safety tests
 ├── walker.rs      # Recursive traversal and symlink safety tests
-└── ...
+├── list.rs        # List-mode filtering, sorting, and sizing tests
+├── report.rs      # Report rendering and size formatting tests
+├── picker.rs      # Picker command selection and pick pipeline tests
+└── clipboard.rs   # Clipboard copy pipeline tests
 
 tests/
 └── cli.rs         # End-to-end CLI integration tests
@@ -98,43 +114,63 @@ Integration tests are located in:
 tests/cli.rs
 ```
 
-These tests execute the compiled `harvcode` binary through `std::process::Command` and verify behavior from the user's perspective.
+These tests execute the compiled `harvcode` binary and verify behavior from
+the user's perspective.
 
-Cargo provides the binary path through:
+`assert_cmd` resolves the compiled binary for the current build through:
 
 ```rust
-env!("CARGO_BIN_EXE_harvcode")
+assert_cmd::Command::cargo_bin("harvcode")
 ```
 
-This allows the test suite to exercise the real command-line interface without dependencies such as `assert_cmd`.
+so the suite always exercises the real command-line interface.
 
-## Zero-Dependency Test Design
+## Test Dependencies
 
-The test suite intentionally does not use additional testing crates such as:
+Three dev-dependencies support the test suite:
 
-- `assert_cmd`
-- `predicates`
-- `tempfile`
+### `assert_cmd`
 
-Instead, it uses the Rust standard library:
+Runs the compiled binary and returns an `Assert` handle with fluent
+assertions:
 
-- `std::process::Command` to execute the compiled CLI
-- `std::env::temp_dir` to create temporary test directories
-- `std::fs` to create files and inspect output
-- `assert!` and `assert_eq!` for assertions
-- `Drop` implementations for best-effort temporary directory cleanup
+```rust
+harvcode()
+    .arg("--unknown")
+    .assert()
+    .failure()
+    .code(1)
+    .stderr(predicate::str::contains("Unknown option"));
+```
 
-This approach keeps the test setup simple and avoids adding dependencies used only during testing.
+This replaces manual `std::process::Command` handling and gives better failure
+diagnostics (expected vs. actual output are shown side by side).
 
-Each integration test creates a unique temporary directory. Directory names include values such as:
+### `predicates`
 
-- The test name
-- The current process ID
-- A nanosecond timestamp
+Composable boolean assertions used with `assert_cmd`:
 
-This makes collisions unlikely when tests run in parallel.
+```rust
+.stdout(predicate::str::contains("fn main() {}"))
+.stdout(predicate::str::contains("SECRET=value").not())
+```
 
-Temporary directories are removed when their `TestDir` value is dropped. Cleanup is best-effort so that a cleanup failure does not hide the actual test result.
+This replaces hand-written `contains`/`!contains` checks and makes the
+intention of each assertion explicit.
+
+### `tempfile`
+
+Creates unique temporary directories that are removed automatically on drop,
+including when an assertion panics:
+
+```rust
+let dir = TestDir::new("stdout-outputs-collected-files");
+// ... files are created under dir.path() ...
+// directory is removed when `dir` goes out of scope
+```
+
+This replaces the previous manual name-uniquing and best-effort `Drop`
+cleanup, eliminating the risk of leaked directories after test failures.
 
 ## Unit Test Coverage
 
@@ -222,16 +258,23 @@ Root expansion tests are located in:
 src/main.rs
 ```
 
-On Unix platforms, they verify that explicitly supplied symbolic-link roots are not followed.
+They verify that root expansion:
 
-Covered cases include:
+- Collects files recursively from directory roots
+- Includes explicitly supplied file roots
+- Skips hidden root directories (e.g. `.git`)
+- Skips root directories matched by `--exclude-dir`
+
+On Unix platforms, they additionally verify that explicitly supplied
+symbolic-link roots are not followed:
 
 - A symbolic link to a regular file
 - A symbolic link to a directory
 
-These tests protect against collecting data outside the paths explicitly intended by the user.
+These tests protect against collecting data outside the paths explicitly
+intended by the user.
 
-The tests are guarded with:
+The symlink tests are guarded with:
 
 ```rust
 #[cfg(unix)]
@@ -247,13 +290,95 @@ Walker tests are located in:
 src/walker.rs
 ```
 
-On Unix platforms, they verify that recursive traversal:
+They verify that recursive traversal:
+
+- Recursively finds regular files
+- Skips hidden directories
+- Skips directories matched by `--exclude-dir`
+
+On Unix platforms, they additionally verify that traversal:
 
 - Does not follow symbolic links to directories
 - Does not include symbolic links to files
 - Does not collect the target of a symbolic link
 
-The walker uses directory entry file types to reject symlinks before recursion or file collection.
+The walker uses directory entry file types to reject symlinks before recursion
+or file collection.
+
+### List Mode Helpers
+
+List-mode logic is located in:
+
+```text
+src/list.rs
+```
+
+Tests verify that `select_files`:
+
+- Applies the same file filters as content output
+- Counts collected and skipped files in the report
+- Sorts paths deterministically
+
+and that `list_output_size` accounts for the trailing newline after each path.
+
+### Execution Report
+
+Report tests are located in:
+
+```text
+src/report.rs
+```
+
+They verify that the rendered report:
+
+- Contains collected and skipped file counts
+- Formats output size in a human-readable form
+- Reports `Output destination: none` when no destination was added
+- Joins multiple destinations with `, `
+- Reports clipboard status (`not requested` / `success` / `failed`)
+
+and that `format_size` handles bytes, kilobytes, and megabytes correctly.
+
+### Picker
+
+Picker tests are located in:
+
+```text
+src/picker.rs
+```
+
+They verify that picker selection:
+
+- Explicit `sk` selects only `sk`
+- Explicit `fzf` selects only `fzf`
+- Automatic mode prefers `sk`, then `fzf`
+
+On Unix, a fake executable `sk` script is placed on `PATH` to exercise the
+full spawn → write → read pipeline without a real fuzzy finder:
+
+- Selected lines are parsed and returned
+- An unavailable picker returns `None`
+
+Tests that mutate `PATH` are serialized with a `Mutex` so parallel test
+threads cannot race on the process environment.
+
+### Clipboard
+
+Clipboard tests are located in:
+
+```text
+src/clipboard.rs
+```
+
+They verify that `try_copy`:
+
+- Returns `false` when the program does not exist
+- Returns `false` when the program exits with a non-zero status (Unix)
+- Returns `true` when the program reads stdin and exits successfully (Unix,
+  using `cat`)
+
+and that `copy` reports failure when no commands are configured for the
+current target.
 
 ## Integration Test Coverage
 
@@ -310,6 +435,29 @@ Integration tests verify the runtime behavior of:
 
 The tests create both matching and non-matching files and inspect stdout to confirm that only valid files are included.
 
+### List Mode
+
+Integration tests verify that `--list`:
+
+- Prints paths only, never file contents
+- Applies the same filters as content output (e.g. `--include-ext`)
+- Sorts paths deterministically
+- Ignores `--output <file>` and does not create the file
+
+### Reporting Flags
+
+Integration tests verify that:
+
+- `--verbose` prints collected counts and output destinations on stderr
+- `--quiet` suppresses status messages such as "Wrote output to"
+
+### Help and Version
+
+Integration tests verify that:
+
+- `--help` prints usage and lists the new options (e.g. `--max-file-size`)
+- `--version` prints the version string
+
 ### Size Limits
 
 Integration tests verify the runtime behavior of:
@@ -335,6 +483,7 @@ Integration tests verify that:
 
 - Unknown options exit with code `1`
 - Missing values for `--output` exit with code `1`
+- Invalid size values exit with code `1`
 - Error messages are written to stderr
 
 ## Output Mode Testing Strategy
@@ -380,14 +529,15 @@ Its intended runtime behavior is:
 - Avoid copying data to the clipboard
 - Ignore normal output destinations such as `--output`
 
-At the argument-parsing level, automated tests currently verify that:
+At the argument-parsing level, automated tests verify that:
 
 - `--list` enables list mode
 - List mode disables implicit clipboard selection
 - Explicit output flags are still recorded by the parser
 - Runtime code remains responsible for applying list mode precedence
 
-The end-to-end runtime behavior of list mode is not yet covered by CLI integration tests.
+The end-to-end runtime behavior of list mode is covered by CLI integration
+tests (paths only, filters, stable ordering, and `--output` precedence).
 
 Manual verification can be performed with:
 
@@ -431,13 +581,14 @@ For example:
 - Windows commonly provides `clip`
 - Headless environments may not have a usable clipboard session
 
-Because of this, clipboard execution is not tested directly through the current integration suite.
-
-Instead:
+Because of this, clipboard execution is not tested through the integration
+suite. Instead:
 
 - Unit tests verify that clipboard is the default output mode
 - Unit tests distinguish implicit clipboard behavior from explicit `--clipboard`
 - Unit tests verify that list mode does not enable implicit clipboard output
+- Unit tests exercise the `try_copy` pipeline with stable commands (`cat`,
+  `false`) and a non-existent program
 - Integration tests use stdout and file output for deterministic assertions
 
 Clipboard behavior can be checked manually with:
@@ -454,7 +605,9 @@ Expected behavior:
 - With explicit `--clipboard`, clipboard failure is treated as an output error
 - Clipboard output can be combined with file output
 
-If stronger automated clipboard coverage is needed, the clipboard implementation should first be moved behind an injectable or mockable abstraction.
+If stronger automated clipboard coverage is needed, the clipboard
+implementation should first be moved behind an injectable or mockable
+abstraction.
 
 ## Security-Oriented Tests
 
@@ -502,27 +655,36 @@ Exit codes `2` and `3` are implemented but are not yet covered comprehensively b
 - Picker option parsing
 - Quiet and verbose flag parsing
 - Include and exclude rule parsing
+- Size limit parsing (`--max-file-size` / `--max-total-size`)
 - Hidden file and directory filtering
 - Binary and archive extension filtering
 - Extensionless file behavior
 - Case-insensitive file and directory exclusion
-- Markdown formatting
+- Markdown formatting and fence-injection hardening
+- Report rendering and size formatting
+- List-mode filtering, sorting, and sizing
+- Picker command selection and pick pipeline (fake `sk` script)
+- Clipboard copy pipeline (spawn, stdin write, exit status)
 - Stdout output
 - File output
 - Combined stdout and file output
 - Runtime filtering through the CLI
+- Size limit enforcement through the CLI
+- List mode through the CLI (paths only, filters, ordering, `--output` precedence)
+- Verbose and quiet reporting through the CLI
+- Help and version output
 - Unknown option handling
-- Missing output value handling
+- Missing value handling
+- Invalid size value handling
 - Symlink-safe root expansion on Unix
 - Symlink-safe recursive traversal on Unix
 
 ### Manually Tested or Not Yet Automated
 
-- End-to-end list mode behavior
-- Clipboard command execution
-- Picker interaction and cancellation
+- Clipboard command execution on real clipboard tools
+- Real `sk` / `fzf` interactive selection
 - Exit code `2`
-- Output failure exit code `3`
+- Output failure exit code `3` (partially covered by the total-size abort test)
 - Broken pipe behavior
 - Permission-denied input files
 - Permission-denied output destinations
@@ -531,19 +693,7 @@ Exit codes `2` and `3` are implemented but are not yet covered comprehensively b
 
 ## Recommended Future Tests
 
-The following additions would improve coverage while preserving the zero-dependency test design.
-
-### List Mode Integration Tests
-
-Add integration tests verifying that:
-
-- `--list` prints paths only
-- `--list` does not print file contents
-- `--list` respects `--include-ext`
-- `--list` respects `--exclude-dir`
-- `--list --output context.md` does not create the output file
-- `--list --clipboard` does not require clipboard tools
-- List output is sorted deterministically
+The following additions would further improve coverage.
 
 ### Output Failure Tests
 
@@ -558,21 +708,9 @@ Permission-based tests should be designed carefully because behavior can differ 
 
 ### Picker Tests
 
-Picker behavior currently depends on external commands and interactive input.
-
-To make it testable, consider separating:
-
-- Picker discovery
-- Process execution
-- Selected-path parsing
-
-This would allow deterministic unit tests without launching `sk` or `fzf`.
-
-### Ordering Tests
-
-Add tests that create files in a deliberately unsorted order and verify that the final list or formatted output uses the intended stable ordering.
-
-This is especially important because filesystem directory iteration order is not guaranteed.
+Real `sk` / `fzf` interaction remains manual. The fake-picker unit tests
+cover the pipeline without external tools; integration coverage of an actual
+interactive session would still require a real terminal.
 
 ### Formatter Edge Cases
 
@@ -580,11 +718,12 @@ Potential formatter tests include:
 
 - Empty files
 - File paths containing spaces
-- Content containing triple backticks
 - Non-UTF-8 paths
 - Very large text files
 
-Content containing Markdown fences is covered by the fence-injection tests: the fence length scales with the longest backtick run in the content, and path labels are sanitized.
+Content containing Markdown fences is covered by the fence-injection tests:
+the fence length scales with the longest backtick run in the content, and
+path labels are sanitized.
 
 ### Argument Parsing Edge Cases
 
@@ -604,9 +743,11 @@ When adding a feature or fixing a bug:
 1. Add a unit test when the behavior can be isolated.
 2. Add an integration test when the behavior is visible through the CLI.
 3. Prefer deterministic output modes such as `--stdout` or `--output`.
-4. Avoid relying on installed clipboard or picker commands.
-5. Use a unique temporary directory for filesystem tests.
-6. Ensure temporary resources are cleaned up on both success and failure.
+4. Avoid relying on installed clipboard or picker commands; use stable
+   commands or fake executables for pipeline tests.
+5. Use `tempfile` for filesystem tests — it handles uniqueness and cleanup.
+6. For tests that mutate the process environment (e.g. `PATH`), serialize
+   them with a `Mutex` so parallel test threads cannot race.
 7. Use descriptive test names that state the expected behavior.
 8. Keep platform-specific tests behind an appropriate `#[cfg(...)]` guard.
 9. Test observable behavior instead of internal implementation details.
@@ -651,10 +792,11 @@ The test suite prioritizes:
 - Reproducibility
 - Portability
 - Clear failure diagnostics
-- Minimal dependencies
+- Focused dev-dependencies (only where they meaningfully improve tests)
 - Security around filesystem traversal
 - Testing behavior visible to users
 
-Some runtime integrations are intentionally tested manually because they depend on external commands or operating-system facilities.
-
-As those components evolve, dependency injection or small mockable abstractions can be introduced to make clipboard and picker behavior testable without sacrificing the lightweight design of the project.
+Some runtime integrations (real clipboard tools, real interactive pickers) are
+intentionally tested manually because they depend on external commands,
+terminals, or operating-system facilities. Their core pipelines are covered
+by unit tests using stable commands and fake executables.

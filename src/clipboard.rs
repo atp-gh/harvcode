@@ -99,3 +99,44 @@ fn try_copy(program: &str, args: &[&str], content: &str) -> bool {
     // successful status code.
     matches!(child.wait(), Ok(status) if status.success())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copy_fails_when_no_commands_are_configured() {
+        // On targets without a clipboard command table, copy must report
+        // failure instead of panicking.
+        if COMMANDS.is_empty() {
+            assert!(!copy("hello"));
+        }
+    }
+
+    #[test]
+    fn try_copy_fails_when_program_does_not_exist() {
+        // Spawning a program that does not exist is the normal way a
+        // clipboard command is reported as unavailable.
+        assert!(!try_copy(
+            "harvcode-no-such-clipboard-program",
+            &[],
+            "hello"
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn try_copy_succeeds_when_program_reads_stdin_and_exits_ok() {
+        // `cat` reads stdin and exits successfully. This exercises the
+        // write-to-stdin → close → wait pipeline on a stable command.
+        assert!(try_copy("cat", &[], "hello"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn try_copy_fails_when_program_exits_nonzero() {
+        // A command that exits with a failure status must be reported as a
+        // failed copy, even though the spawn and stdin write succeeded.
+        assert!(!try_copy("false", &[], "hello"));
+    }
+}

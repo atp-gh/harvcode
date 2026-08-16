@@ -66,18 +66,63 @@ fn visit(dir: &Path, rules: &Rules, out: &mut Vec<PathBuf>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn temp_test_dir(name: &str) -> PathBuf {
-        let unique = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
+    /// Create a temporary project directory that is cleaned up automatically.
+    ///
+    /// `tempfile::tempdir` handles both uniqueness and cleanup, so tests do
+    /// not need to track or remove directories manually.
+    fn temp_project() -> (tempfile::TempDir, PathBuf) {
+        let base = tempfile::tempdir().unwrap();
+        let project = base.path().join("project");
+        fs::create_dir_all(&project).unwrap();
+        (base, project)
+    }
 
-        let dir = std::env::temp_dir().join(format!("harvcode-walker-test-{}-{}", name, unique));
+    #[test]
+    fn collect_recursively_finds_regular_files() {
+        let (_base, project) = temp_project();
+        fs::create_dir_all(project.join("src")).unwrap();
 
-        fs::create_dir_all(&dir).unwrap();
-        dir
+        fs::write(project.join("main.rs"), "fn main() {}\n").unwrap();
+        fs::write(project.join("src/lib.rs"), "pub fn run() {}\n").unwrap();
+
+        let files = collect(&project, &Rules::default());
+
+        assert!(files.iter().any(|path| path.ends_with("main.rs")));
+        assert!(files.iter().any(|path| path.ends_with("src/lib.rs")));
+    }
+
+    #[test]
+    fn collect_skips_hidden_directories() {
+        let (_base, project) = temp_project();
+        fs::create_dir_all(project.join(".git")).unwrap();
+
+        fs::write(project.join(".git/config"), "secret\n").unwrap();
+        fs::write(project.join("main.rs"), "fn main() {}\n").unwrap();
+
+        let files = collect(&project, &Rules::default());
+
+        assert!(files.iter().any(|path| path.ends_with("main.rs")));
+        assert!(!files.iter().any(|path| path.ends_with("config")));
+    }
+
+    #[test]
+    fn collect_skips_directories_matched_by_exclude_dir() {
+        let (_base, project) = temp_project();
+        fs::create_dir_all(project.join("target")).unwrap();
+
+        fs::write(project.join("target/generated.rs"), "generated\n").unwrap();
+        fs::write(project.join("main.rs"), "fn main() {}\n").unwrap();
+
+        let rules = Rules {
+            exclude_dirs: vec!["target".to_string()],
+            ..Rules::default()
+        };
+
+        let files = collect(&project, &rules);
+
+        assert!(files.iter().any(|path| path.ends_with("main.rs")));
+        assert!(!files.iter().any(|path| path.ends_with("generated.rs")));
     }
 
     #[cfg(unix)]
@@ -85,11 +130,8 @@ mod tests {
     fn collect_does_not_follow_symlinked_directory() {
         use std::os::unix::fs::symlink;
 
-        let base = temp_test_dir("symlink-dir");
-        let project = base.join("project");
-        let outside = base.join("outside");
-
-        fs::create_dir_all(&project).unwrap();
+        let (_base, project) = temp_project();
+        let outside = _base.path().join("outside");
         fs::create_dir_all(&outside).unwrap();
 
         let secret = outside.join("secret.rs");
@@ -104,8 +146,6 @@ mod tests {
             !files.iter().any(|path| path.ends_with("secret.rs")),
             "collector should not follow symlinked directories"
         );
-
-        let _ = fs::remove_dir_all(base);
     }
 
     #[cfg(unix)]
@@ -113,11 +153,8 @@ mod tests {
     fn collect_does_not_include_symlinked_file() {
         use std::os::unix::fs::symlink;
 
-        let base = temp_test_dir("symlink-file");
-        let project = base.join("project");
-        let outside = base.join("outside");
-
-        fs::create_dir_all(&project).unwrap();
+        let (_base, project) = temp_project();
+        let outside = _base.path().join("outside");
         fs::create_dir_all(&outside).unwrap();
 
         let secret = outside.join("secret.rs");
@@ -132,12 +169,9 @@ mod tests {
             !files.iter().any(|path| path == &link),
             "collector should not include symlinked files"
         );
-
         assert!(
             !files.iter().any(|path| path.ends_with("secret.rs")),
             "collector should not collect symlink target"
         );
-
-        let _ = fs::remove_dir_all(base);
     }
 }
